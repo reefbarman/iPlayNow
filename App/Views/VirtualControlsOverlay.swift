@@ -1,11 +1,12 @@
-import ChiakiKit
+import NVSTKit
 import UIKit
 
 /// An occupied stick (even at its centre) owns that axis until its finger lifts.
+/// Stick Y is up-positive, like NVSTGamepad.
 struct VirtualPadState: Equatable {
-	var buttons: UInt32 = 0
-	var l2: UInt8 = 0
-	var r2: UInt8 = 0
+	var buttons: UInt16 = 0
+	var leftTrigger: UInt8 = 0
+	var rightTrigger: UInt8 = 0
 	var leftStick: SIMD2<Int16>?
 	var rightStick: SIMD2<Int16>?
 }
@@ -31,7 +32,7 @@ struct VirtualControlsStyle: Equatable {
 /// floating sticks, the touchpad and the stream menu all agree on who gets each finger.
 final class VirtualControlsOverlay: UIView {
 	private enum Action {
-		case button(UInt32), trigger(left: Bool), dpad(UInt32)
+		case button(UInt16), trigger(left: Bool), dpad(UInt16)
 	}
 
 	private struct Control {
@@ -51,7 +52,7 @@ final class VirtualControlsOverlay: UIView {
 	}
 
 	private enum Finger {
-		case button(UInt32), trigger(left: Bool), dpad(UInt32)
+		case button(UInt16), trigger(left: Bool), dpad(UInt16)
 		case stick(left: Bool, origin: CGPoint, location: CGPoint)
 	}
 
@@ -76,24 +77,14 @@ final class VirtualControlsOverlay: UIView {
 		}
 	}
 
-	// Three upright rays: shorter angled marks flank the tall centre mark.
-	private static let createIcon = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 20)).image { _ in
-		let strokes = UIBezierPath()
-		strokes.lineWidth = 1.7
-		strokes.lineCapStyle = .round
-		strokes.move(to: CGPoint(x: 4, y: 8))
-		strokes.addLine(to: CGPoint(x: 6.5, y: 13))
-		strokes.move(to: CGPoint(x: 10, y: 5))
-		strokes.addLine(to: CGPoint(x: 10, y: 12))
-		strokes.move(to: CGPoint(x: 16, y: 8))
-		strokes.addLine(to: CGPoint(x: 13.5, y: 13))
-		UIColor.white.withAlphaComponent(0.9).setStroke()
-		strokes.stroke()
+	private static func symbol(_ name: String) -> UIImage? {
+		UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))?
+			.withTintColor(.white.withAlphaComponent(0.9), renderingMode: .alwaysOriginal)
 	}
 
-	private static let optionsIcon = UIImage(systemName: "line.3.horizontal",
-		withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold))?
-		.withTintColor(.white.withAlphaComponent(0.9), renderingMode: .alwaysOriginal)
+	/// Xbox View (two overlapping windows) and Menu (three lines)
+	private static let viewIcon = symbol("rectangle.on.rectangle")
+	private static let menuIcon = symbol("line.3.horizontal")
 
 	override init(frame: CGRect) {
 		super.init(frame: frame)
@@ -118,8 +109,8 @@ final class VirtualControlsOverlay: UIView {
 		func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat = 44, _ h: CGFloat = 44) -> CGRect {
 			CGRect(x: x - w * s / 2, y: y - h * s / 2, width: w * s, height: h * s)
 		}
-		func button(_ label: String, _ x: CGFloat, _ y: CGFloat, _ bit: CKButton) -> Control {
-			Control(label, rect(x, y), .button(bit.rawValue))
+		func button(_ label: String, _ x: CGFloat, _ y: CGFloat, _ bit: UInt16) -> Control {
+			Control(label, rect(x, y), .button(bit))
 		}
 		/// The bottom shortcut row stays one size so it fits the letterbox
 		func systemRect(_ x: CGFloat) -> CGRect {
@@ -130,22 +121,22 @@ final class VirtualControlsOverlay: UIView {
 		// In the open space inside the D-pad and face buttons, clear of L3/R3
 		fixedStickCentres = [CGPoint(x: x + 150 * s, y: row - 20 * s), CGPoint(x: right - 150 * s, y: row - 20 * s)]
 		controls = [
-			Control("L2", rect(x - 32 * s, shoulders, 56, 44), .trigger(left: true), rounded: true),
-			Control("L1", rect(x + 32 * s, shoulders, 56, 44), .button(CK_BUTTON_L1.rawValue), rounded: true),
-			Control("R1", rect(right - 32 * s, shoulders, 56, 44), .button(CK_BUTTON_R1.rawValue), rounded: true),
-			Control("R2", rect(right + 32 * s, shoulders, 56, 44), .trigger(left: false), rounded: true),
-			Control("▲", rect(x, row - 36 * s, 36, 36), .dpad(CK_BUTTON_DPAD_UP.rawValue), rounded: true),
-			Control("◀", rect(x - 36 * s, row, 36, 36), .dpad(CK_BUTTON_DPAD_LEFT.rawValue), rounded: true),
-			Control("▶", rect(x + 36 * s, row, 36, 36), .dpad(CK_BUTTON_DPAD_RIGHT.rawValue), rounded: true),
-			Control("▼", rect(x, row + 36 * s, 36, 36), .dpad(CK_BUTTON_DPAD_DOWN.rawValue), rounded: true),
-			button("△", right, row - 36 * s, CK_BUTTON_PYRAMID),
-			button("□", right - 36 * s, row, CK_BUTTON_BOX),
-			button("○", right + 36 * s, row, CK_BUTTON_MOON),
-			button("×", right, row + 36 * s, CK_BUTTON_CROSS),
-			button("L3", x + 76 * s, row + 37 * s, CK_BUTTON_L3),
-			button("R3", right - 76 * s, row + 37 * s, CK_BUTTON_R3),
-			Control("Create", systemRect(middle - 32), .button(CK_BUTTON_SHARE.rawValue), rounded: true, icon: Self.createIcon),
-			Control("Options", systemRect(middle + 32), .button(CK_BUTTON_OPTIONS.rawValue), rounded: true, icon: Self.optionsIcon),
+			Control("LT", rect(x - 32 * s, shoulders, 56, 44), .trigger(left: true), rounded: true),
+			Control("LB", rect(x + 32 * s, shoulders, 56, 44), .button(NVSTGamepad.leftShoulder), rounded: true),
+			Control("RB", rect(right - 32 * s, shoulders, 56, 44), .button(NVSTGamepad.rightShoulder), rounded: true),
+			Control("RT", rect(right + 32 * s, shoulders, 56, 44), .trigger(left: false), rounded: true),
+			Control("▲", rect(x, row - 36 * s, 36, 36), .dpad(NVSTGamepad.dpadUp), rounded: true),
+			Control("◀", rect(x - 36 * s, row, 36, 36), .dpad(NVSTGamepad.dpadLeft), rounded: true),
+			Control("▶", rect(x + 36 * s, row, 36, 36), .dpad(NVSTGamepad.dpadRight), rounded: true),
+			Control("▼", rect(x, row + 36 * s, 36, 36), .dpad(NVSTGamepad.dpadDown), rounded: true),
+			button("Y", right, row - 36 * s, NVSTGamepad.y),
+			button("X", right - 36 * s, row, NVSTGamepad.x),
+			button("B", right + 36 * s, row, NVSTGamepad.b),
+			button("A", right, row + 36 * s, NVSTGamepad.a),
+			button("LS", x + 76 * s, row + 37 * s, NVSTGamepad.leftThumb),
+			button("RS", right - 76 * s, row + 37 * s, NVSTGamepad.rightThumb),
+			Control("View", systemRect(middle - 32), .button(NVSTGamepad.back), rounded: true, icon: Self.viewIcon),
+			Control("Menu", systemRect(middle + 32), .button(NVSTGamepad.start), rounded: true, icon: Self.menuIcon),
 		]
 		setNeedsDisplay()
 	}
@@ -205,16 +196,16 @@ final class VirtualControlsOverlay: UIView {
 		return publish()
 	}
 
-	private func direction(at point: CGPoint) -> UInt32 {
+	private func direction(at point: CGPoint) -> UInt16 {
 		let dx = point.x - dpadCentre.x, dy = point.y - dpadCentre.y
 		let distance = max(abs(dx), abs(dy))
 		guard distance > 9 else { return 0 }
 		let threshold = distance * 0.42
-		var bits: UInt32 = 0
-		if dx < -threshold { bits |= CK_BUTTON_DPAD_LEFT.rawValue }
-		if dx > threshold { bits |= CK_BUTTON_DPAD_RIGHT.rawValue }
-		if dy < -threshold { bits |= CK_BUTTON_DPAD_UP.rawValue }
-		if dy > threshold { bits |= CK_BUTTON_DPAD_DOWN.rawValue }
+		var bits: UInt16 = 0
+		if dx < -threshold { bits |= NVSTGamepad.dpadLeft }
+		if dx > threshold { bits |= NVSTGamepad.dpadRight }
+		if dy < -threshold { bits |= NVSTGamepad.dpadUp }
+		if dy > threshold { bits |= NVSTGamepad.dpadDown }
 		return bits
 	}
 
@@ -224,13 +215,14 @@ final class VirtualControlsOverlay: UIView {
 			switch finger {
 			case .button(let bit), .dpad(let bit): next.buttons |= bit
 			case .trigger(let left):
-				if left { next.l2 = 255 } else { next.r2 = 255 }
+				if left { next.leftTrigger = 255 } else { next.rightTrigger = 255 }
 			case .stick(let left, let origin, let location):
 				let dx = location.x - origin.x, dy = location.y - origin.y
 				let distance = hypot(dx, dy)
 				let deadZone: CGFloat = 5
 				let scale = distance > deadZone ? 32767 * min(1, (distance - deadZone) / (stickRadius - deadZone)) / distance : 0
-				let axis = SIMD2(Int16(clamping: Int((dx * scale).rounded())), Int16(clamping: Int((dy * scale).rounded())))
+				// Screen Y grows downwards; the pad's grows upwards
+				let axis = SIMD2(Int16(clamping: Int((dx * scale).rounded())), Int16(clamping: Int((-dy * scale).rounded())))
 				if left { next.leftStick = axis } else { next.rightStick = axis }
 			}
 		}
@@ -245,7 +237,7 @@ final class VirtualControlsOverlay: UIView {
 			let pressed: Bool
 			switch control.action {
 			case .button(let bit), .dpad(let bit): pressed = pad.buttons & bit != 0
-			case .trigger(let left): pressed = (left ? pad.l2 : pad.r2) != 0
+			case .trigger(let left): pressed = (left ? pad.leftTrigger : pad.rightTrigger) != 0
 			}
 			drawControl(control.rect, radius: control.rounded ? 10 : control.rect.height / 2, pressed: pressed,
 				label: control.label, icon: control.icon)

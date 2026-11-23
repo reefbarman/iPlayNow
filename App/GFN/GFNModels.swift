@@ -34,6 +34,12 @@ struct GFNProvider: Codable, Hashable, Identifiable {
 	/// CloudMatch base for this provider: server info, session create and the session list
 	var streamingURL: URL
 
+	/// What players know it as: Pentanet runs GeForce NOW in Australia as Cloud.GG
+	var displayName: String {
+		let key = (code + " " + name).uppercased()
+		return key.contains("PENTANET") || key.contains("CLOUDGG") || key.contains("CLOUD.GG") ? "Cloud.GG" : name
+	}
+
 	static let nvidia = GFNProvider(
 		id: "PDiAhv2kJTFeQ7WOPqiQ2tRZ7lGhR2X11dXvM4TZSxg",
 		code: "NVIDIA",

@@ -248,51 +248,6 @@ final class MetalRenderer {
 		capture.requestSave(completion)
 	}
 
-	/// Renders the decoded frame and its fit/zoom geometry into a readable SDR texture.
-	func renderScreenshotFrame() async throws -> CGImage {
-		guard let frame = lock.withLock({ screenshotFrame }),
-			let luma = CVMetalTextureGetTexture(frame.luma), let chroma = CVMetalTextureGetTexture(frame.chroma)
-		else { throw MarketingScreenshot.CaptureError.noFrame }
-		// The CoreVideo wrappers keep the decoded surfaces alive until the GPU has read them.
-		defer { withExtendedLifetime(frame) {} }
-		let width = Int(frame.size.width.rounded()), height = Int(frame.size.height.rounded())
-		guard width > 0, height > 0 else { throw MarketingScreenshot.CaptureError.noFrame }
-		let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-			width: width, height: height, mipmapped: false)
-		descriptor.usage = .renderTarget
-		descriptor.storageMode = .shared
-		guard let texture = device.makeTexture(descriptor: descriptor), let buffer = queue.makeCommandBuffer() else {
-			throw MarketingScreenshot.CaptureError.renderFailed
-		}
-		var uniforms = frame.uniforms
-		guard draw(luma: luma, chroma: chroma, uniforms: &uniforms, to: texture, in: buffer) else {
-			throw MarketingScreenshot.CaptureError.renderFailed
-		}
-		try await withCheckedThrowingContinuation { (completion: CheckedContinuation<Void, Error>) in
-			buffer.addCompletedHandler { finished in
-				if finished.status == .completed { completion.resume() }
-				else { completion.resume(throwing: finished.error ?? MarketingScreenshot.CaptureError.renderFailed) }
-			}
-			buffer.commit()
-		}
-		try Task.checkCancellation()
-
-		let rowBytes = width * 4
-		var pixels = Data(count: height * rowBytes)
-		pixels.withUnsafeMutableBytes { bytes in
-			texture.getBytes(bytes.baseAddress!, bytesPerRow: rowBytes,
-				from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
-		}
-		let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue))
-		let profile = uniforms.transferMode == 3 ? CGColorSpace.sRGB : CGColorSpace.itur_709
-		guard let colourSpace = CGColorSpace(name: profile),
-			let provider = CGDataProvider(data: pixels as CFData),
-			let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
-				bytesPerRow: rowBytes, space: colourSpace, bitmapInfo: bitmapInfo, provider: provider,
-				decode: nil, shouldInterpolate: false, intent: .defaultIntent)
-		else { throw MarketingScreenshot.CaptureError.renderFailed }
-		return image
-	}
 
 	func setDrawableSize(_ size: CGSize) {
 		lock.withLock {
@@ -821,13 +776,9 @@ final class StreamMetalView: UIView {
 
 	let renderer: MetalRenderer
 
-	/// Touch down/move/up in touchpad coordinates. Screen touches use slots 10 and 11.
-	var onTouch: ((ControllerInput.TouchEvent) -> Void)?
-	/// A quick tap that didn't move: sent instead of `.up` so it can become a click.
-	var onTap: ((Int) -> Void)?
 	/// Top-right hot corner (settings)
 	var onCornerTap: (() -> Void)?
-	/// Top-left hot corner (PS button)
+	/// Top-left hot corner (Xbox button)
 	var onLeftCornerTap: (() -> Void)?
 	var onVirtualPad: ((VirtualPadState) -> Void)?
 	var onReset: (() -> Void)?
@@ -844,16 +795,6 @@ final class StreamMetalView: UIView {
 
 	/// Hot corner size in points, at the top-right and top-left of the view
 	static let cornerSize = CGSize(width: 140, height: 90)
-	private static let tapMaxDuration: TimeInterval = 0.25
-	private static let tapMaxMovement: CGFloat = 12
-
-	private struct Tracked {
-		let slot: Int
-		let start: CGPoint
-		let time: TimeInterval
-		var moved = false
-	}
-	private var tracked: [ObjectIdentifier: Tracked] = [:]
 
 	/// Ask a ProMotion screen for 120 Hz while this view is on screen
 	var highRefresh = true {
@@ -872,20 +813,6 @@ final class StreamMetalView: UIView {
 		renderer.attach(metalLayer)
 	}
 
-	/// UIKit cannot reliably snapshot Metal. Substitute a still frame under the existing controls.
-	func withScreenshotVideo<T>(_ image: CGImage, capture: () throws -> T) rethrows -> T {
-		let still = UIImageView(image: UIImage(cgImage: image))
-		still.contentMode = .scaleToFill
-		still.frame = bounds
-		still.isUserInteractionEnabled = false
-		insertSubview(still, belowSubview: controls)
-		metalLayer.isHidden = true
-		defer {
-			metalLayer.isHidden = false
-			still.removeFromSuperview()
-		}
-		return try capture()
-	}
 
 	@available(*, unavailable)
 	required init?(coder: NSCoder) { fatalError() }
@@ -980,13 +907,12 @@ final class StreamMetalView: UIView {
 	}
 
 	private func resetTouches() {
-		tracked.removeAll()
 		frameGenerationTouches.removeAll()
 		controls.reset()
 		onReset?()
 	}
 
-	// MARK: Touchpad
+	// MARK: Touches
 
 	private var shortcutSize: CGSize {
 		controls.isHidden ? Self.cornerSize : CGSize(width: 84, height: 52)
@@ -1007,41 +933,6 @@ final class StreamMetalView: UIView {
 		return CGRect(x: bounds.maxX - size.width, y: bounds.maxY - size.height, width: size.width, height: size.height)
 	}
 
-	/// With virtual controls, the upper half maps to the whole DualSense touchpad and the
-	/// lower half is left for sticks and buttons. With a physical controller, the whole
-	/// picture is the touchpad.
-	private var touchpadRect: CGRect {
-		guard controls.isHidden else {
-			return CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height / 2)
-		}
-		return videoRect
-	}
-
-	/// Where the picture is drawn: letterboxed or pillarboxed when fitted, otherwise the whole view
-	private var videoRect: CGRect {
-		guard let aspect = videoAspectForLetterbox, aspect > 0, bounds.width > 0, bounds.height > 0 else { return bounds }
-		if bounds.width / bounds.height > aspect {
-			let width = bounds.height * aspect
-			return CGRect(x: bounds.midX - width / 2, y: bounds.minY, width: width, height: bounds.height)
-		}
-		let height = bounds.width / aspect
-		return CGRect(x: bounds.minX, y: bounds.midY - height / 2, width: bounds.width, height: height)
-	}
-
-	/// Whether a touch here starts a touchpad touch. With a physical controller, touches in
-	/// the black bars count too and land on the nearest edge of the touchpad.
-	private func startsTouchpadTouch(at p: CGPoint) -> Bool {
-		controls.isHidden ? bounds.contains(p) : touchpadRect.contains(p)
-	}
-
-	private func touchpadPoint(_ p: CGPoint) -> (UInt16, UInt16) {
-		let area = touchpadRect
-		guard area.width > 0, area.height > 0 else { return (0, 0) }
-		let nx = min(max((p.x - area.minX) / area.width, 0), 1)
-		let ny = min(max((p.y - area.minY) / area.height, 0), 1)
-		return (UInt16((nx * 1919).rounded()), UInt16((ny * 1079).rounded()))
-	}
-
 	override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
 		guard acceptsInput else { return }
 		for touch in touches {
@@ -1054,42 +945,24 @@ final class StreamMetalView: UIView {
 				onLeftCornerTap?()
 				continue
 			}
-			let inTouchpad = startsTouchpadTouch(at: p)
+			let key = ObjectIdentifier(touch)
+			let inFrameGenerationCorner = frameGenerationCornerRect.contains(p)
 			if !controls.isHidden {
-				let key = ObjectIdentifier(touch)
-				let inFrameGenerationCorner = frameGenerationCornerRect.contains(p)
 				// Fixed controls win over shortcuts, and sticks only start in free space.
-				let result = controls.begin(key, at: p, allowsStick: !inTouchpad && !inFrameGenerationCorner)
+				let result = controls.begin(key, at: p, allowsStick: !inFrameGenerationCorner)
 				if let state = result.state { onVirtualPad?(state) }
 				if result.handled { continue }
-				if inFrameGenerationCorner {
-					frameGenerationTouches.insert(key)
-					continue
-				}
 			}
-			guard inTouchpad else { continue }
-			let used = Set(tracked.values.map(\.slot))
-			guard let slot = [10, 11].first(where: { !used.contains($0) }) else { continue }
-			tracked[ObjectIdentifier(touch)] = Tracked(slot: slot, start: p, time: touch.timestamp)
-			let (x, y) = touchpadPoint(p)
-			onTouch?(.down(slot: slot, x: x, y: y))
+			if inFrameGenerationCorner {
+				frameGenerationTouches.insert(key)
+			}
 		}
 	}
 
 	override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
 		for touch in touches {
 			let key = ObjectIdentifier(touch)
-			let p = touch.location(in: self)
-			guard var t = tracked[key] else {
-				if let state = controls.move(key, to: p) { onVirtualPad?(state) }
-				continue
-			}
-			if !t.moved, hypot(p.x - t.start.x, p.y - t.start.y) > Self.tapMaxMovement {
-				t.moved = true
-				tracked[key] = t
-			}
-			let (x, y) = touchpadPoint(p)
-			onTouch?(.move(slot: t.slot, x: x, y: y))
+			if let state = controls.move(key, to: touch.location(in: self)) { onVirtualPad?(state) }
 		}
 	}
 
@@ -1108,21 +981,7 @@ final class StreamMetalView: UIView {
 				if allowsTap && frameGenerationCornerRect.contains(touch.location(in: self)) { onFrameGenerationTap?() }
 				continue
 			}
-			guard let t = tracked.removeValue(forKey: key) else {
-				if let state = controls.end(key) { onVirtualPad?(state) }
-				continue
-			}
-			let point = touch.location(in: self)
-			if allowsTap, !t.moved, hypot(point.x - t.start.x, point.y - t.start.y) <= Self.tapMaxMovement,
-			   touch.timestamp - t.time <= Self.tapMaxDuration {
-				onTap?(t.slot)
-			} else {
-				if allowsTap {
-					let (x, y) = touchpadPoint(point)
-					onTouch?(.move(slot: t.slot, x: x, y: y))
-				}
-				onTouch?(.up(slot: t.slot))
-			}
+			if let state = controls.end(key) { onVirtualPad?(state) }
 		}
 	}
 }

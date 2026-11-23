@@ -33,6 +33,14 @@ targets:
         INFOPLIST_FILE: App/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MTL_FAST_MATH: YES
+        # NVSTKit's module imports OpenSSL, whose headers include <openssl/...>
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(BUILT_PRODUCTS_DIR)/OpenSSL.framework/Headers
+          - $(BUILT_PRODUCTS_DIR)/XCFrameworkIntermediates/OpenSSL/OpenSSL.framework/Headers
+        OTHER_CFLAGS:
+          - $(inherited)
+          - -Wno-incomplete-umbrella
     info:
       path: App/Info.plist
       properties:

@@ -15,8 +15,6 @@ enum DeviceLayout {
 	static let isPad = UIDevice.current.userInterfaceIdiom == .pad
 	/// What to call this device in messages: "phone" or "iPad"
 	static var deviceNoun: String { isPad ? "iPad" : "phone" }
-	/// Where the app's documents show up in the Files app
-	static var filesLocation: String { isPad ? "Files › On My iPad › iPlay5" : "Files › On My iPhone › iPlay5" }
 
 	private static let innerScreenMinShortSidePixels: CGFloat = 1700
 	/// Model identifiers of known foldables. Others are picked up the first time

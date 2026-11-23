@@ -107,7 +107,7 @@ final class FramePacer {
 			stopped = false
 			let hz = screenHz
 			let thread = Thread { [weak self] in self?.runLoop(screenHz: hz) }
-			thread.name = "iPlay5 frame pacer"
+			thread.name = "iPlayGFN frame pacer"
 			thread.qualityOfService = .userInteractive
 			self.thread = thread
 			thread.start()

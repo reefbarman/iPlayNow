@@ -13,12 +13,16 @@ final class GFNLaunch {
 		case sessionLimit([GFNRemoteSession])
 	}
 
-	private(set) var phase: Phase = .checking
+	private(set) var phase: Phase = .checking {
+		didSet { if phase != oldValue { onPhase?(phase) } }
+	}
+	/// Called on every phase change
+	@ObservationIgnored var onPhase: ((Phase) -> Void)?
 	let game: GFNGame
 	let variant: GFNGameVariant
 
 	private let accounts: GFNAccountStore
-	private let request: GFNStreamRequest
+	private var request: GFNStreamRequest
 	private var session: GFNSession?
 	private var task: Task<Void, Never>?
 
@@ -35,6 +39,11 @@ final class GFNLaunch {
 		task?.cancel()
 		phase = .checking
 		task = Task { [weak self] in await self?.run() }
+	}
+
+	/// Resolution and frame rate for the next `start()`
+	func setRequest(_ request: GFNStreamRequest) {
+		self.request = request
 	}
 
 	/// For `.sessionLimit`: end the sessions in the way and try again
