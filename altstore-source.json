@@ -17,7 +17,16 @@
       "tintColor": "#76B900",
       "category": "entertainment",
       "screenshots": [],
-      "versions": [],
+      "versions": [
+        {
+          "version": "0.1.0",
+          "date": "2026-11-23T22:49:58Z",
+          "downloadURL": "https://github.com/reefbarman/iPlayGFN/releases/download/v0.1.0/iPlayGFN.ipa",
+          "size": 3980299,
+          "minOSVersion": "17.0",
+          "localizedDescription": "See the release notes on GitHub."
+        }
+      ],
       "appPermissions": {
         "entitlements": [],
         "privacy": {
