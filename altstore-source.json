@@ -1,0 +1,30 @@
+{
+  "name": "iPlayGFN",
+  "identifier": "io.github.reefbarman.iplaygfn.source",
+  "subtitle": "GeForce NOW for iPhone",
+  "description": "A native GeForce NOW player for iPhone and iPad. Releases are published automatically from github.com/reefbarman/iPlayGFN.",
+  "iconURL": "https://raw.githubusercontent.com/reefbarman/iPlayGFN/main/App/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+  "website": "https://github.com/reefbarman/iPlayGFN",
+  "tintColor": "#76B900",
+  "apps": [
+    {
+      "name": "iPlayGFN",
+      "bundleIdentifier": "io.github.reefbarman.iplaygfn",
+      "developerName": "reefbarman",
+      "subtitle": "Play your GeForce NOW games natively",
+      "localizedDescription": "Play with on-screen virtual controls or a supported controller such as an Xbox controller, DualSense or Backbone. By default, virtual controls stay out of the way while a controller is connected.\n\nSign in to GeForce NOW and stream the games you own with native NVST streaming, hardware HEVC/H.264 decoding and Metal. Up to 4K, 120 fps and HDR where your membership allows, per-game video settings, gyro aiming and rumble. Tuned for the iPhone Duo's inner screen, and works on any iPhone or iPad running iOS 17 or later.",
+      "iconURL": "https://raw.githubusercontent.com/reefbarman/iPlayGFN/main/App/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+      "tintColor": "#76B900",
+      "category": "entertainment",
+      "screenshots": [],
+      "versions": [],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "iPlayGFN uses a local address to finish signing in to GeForce NOW."
+        }
+      }
+    }
+  ],
+  "news": []
+}
