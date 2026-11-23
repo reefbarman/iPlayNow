@@ -385,6 +385,9 @@ public final class NvstNativeBundle: @unchecked Sendable {
     }
 
     private func startAudioDevice() {
+        // iPlayGFN: the app pulls audio itself (pullAudio) and owns the AVAudioSession. Creating the
+        // device anyway would make close() deactivate the app's session, so skip it entirely.
+        guard startsAudioDevice else { return }
         // The native decode is stereo end to end: the Opus decoder, the jitter buffer and the
         // receive pipeline all carry two channels. The device is therefore asked for stereo (its
         // own device may still fall to mono), and the fill maps the stereo decode onto whatever
