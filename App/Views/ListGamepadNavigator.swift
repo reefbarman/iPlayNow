@@ -165,21 +165,30 @@ struct GamepadHintBar: View {
 	let hints: [GamepadHint]
 
 	var body: some View {
-		HStack(spacing: 14) {
+		HStack(spacing: 16) {
 			ForEach(hints) { hint in
-				HStack(spacing: 4) {
+				HStack(spacing: 5) {
 					Image(systemName: hint.symbol)
 					Text(hint.label)
 				}
 			}
 		}
-		.font(.caption.weight(.medium))
+		.font(.footnote.weight(.medium))
 		.foregroundStyle(.secondary)
 		.lineLimit(1)
 		.minimumScaleFactor(0.8)
 		.frame(maxWidth: .infinity)
-		.padding(.vertical, 4)
+		.padding(.top, 8)
+		// Sit down in the home indicator's strip, just clear of the indicator, rather than above it
+		.padding(.bottom, max(8, Self.bottomInset - 14))
 		.padding(.horizontal, 12)
 		.background(.bar)
+		.ignoresSafeArea(.container, edges: .bottom)
+	}
+
+	private static var bottomInset: CGFloat {
+		UIApplication.shared.connectedScenes
+			.compactMap { ($0 as? UIWindowScene)?.keyWindow }
+			.first?.safeAreaInsets.bottom ?? 0
 	}
 }
