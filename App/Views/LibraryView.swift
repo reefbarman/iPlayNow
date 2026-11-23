@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// The games you own on GeForce NOW. Shows the last list straight away, then refreshes it.
+/// The games you own on GeForce NOW, as a grid of covers. Shows the last list
+/// straight away, then refreshes it.
 struct LibraryView: View {
 	@Environment(GFNAccountStore.self) private var accounts
+	@Environment(\.horizontalSizeClass) private var sizeClass
 	@State private var games: [GFNGame] = GFNLibrary.cached()
 	@State private var loading = false
 	@State private var error: String?
@@ -11,7 +13,11 @@ struct LibraryView: View {
 	@State private var choosingStore: GFNGame?
 	@State private var playing: Playing?
 	@State private var selection: String?
+	@State private var columnCount = 2
 	@State private var gamepad = ListGamepadNavigator()
+	@AppStorage("iplaygfn.librarySort") private var sort = LibrarySort.recent
+	/// A store name, or empty for every store
+	@AppStorage("iplaygfn.libraryStore") private var storeFilter = ""
 
 	/// One launch: the game and which store's copy
 	struct Playing: Identifiable {
@@ -20,10 +26,33 @@ struct LibraryView: View {
 		var id: String { variant.id }
 	}
 
+	private static let spacing: CGFloat = 16
+	private static let margin: CGFloat = 16
+
+	private var minimumCoverWidth: CGFloat { sizeClass == .regular ? 160 : 136 }
+
+	/// Every store you own something on, for the filter
+	private var stores: [String] {
+		Set(games.flatMap { $0.ownedVariants.map(\.storeName) }).sorted()
+	}
+
 	private var shown: [GFNGame] {
+		var list = games
+		if !storeFilter.isEmpty {
+			list = list.filter { $0.ownedVariants.contains { $0.storeName == storeFilter } }
+		}
 		let query = search.trimmingCharacters(in: .whitespaces)
-		guard !query.isEmpty else { return games }
-		return games.filter { $0.title.localizedCaseInsensitiveContains(query) }
+		if !query.isEmpty {
+			list = list.filter { $0.title.localizedCaseInsensitiveContains(query) }
+		}
+		switch sort {
+		case .recent:
+			// The service already returns most recently played first, then newest added
+			break
+		case .title:
+			list.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+		}
+		return list
 	}
 
 	private var gamepadActive: Bool {
@@ -32,51 +61,30 @@ struct LibraryView: View {
 
 	var body: some View {
 		NavigationStack {
-			ScrollViewReader { proxy in
-				List {
-					if games.isEmpty {
-						if loading {
-							HStack {
-								Spacer()
-								ProgressView("Loading your games…")
-								Spacer()
-							}
-							.listRowBackground(Color.clear)
-						} else {
-							ContentUnavailableView {
-								Label("No games yet", systemImage: "gamecontroller")
-							} description: {
-								Text(error ?? "Games you own show up here once you've linked their stores (Steam, Epic, Xbox and others) in GeForce NOW.")
-							} actions: {
-								Button("Refresh") { Task { await refresh() } }.buttonStyle(.borderedProminent)
-							}
-						}
+			GeometryReader { geo in
+				ScrollViewReader { proxy in
+					ScrollView {
+						content
 					}
-					ForEach(shown) { game in
-						let selected = gamepad.confirmSymbol != nil && selection == game.id
-						GameRow(game: game, confirmSymbol: selected ? gamepad.confirmSymbol : nil) { play(game) }
-							.id(game.id)
-							.listRowBackground(selected ? Color.accentColor.opacity(0.18) : nil)
-							.contextMenu {
-								if game.ownedVariants.count > 1 {
-									Button { choosingStore = game } label: {
-										Label("Choose store", systemImage: "bag")
-									}
-								}
-							}
+					.onChange(of: selection) { _, id in
+						guard let id, gamepad.confirmSymbol != nil else { return }
+						withAnimation { proxy.scrollTo(id, anchor: .center) }
 					}
 				}
-				.onChange(of: selection) { _, id in
-					guard let id else { return }
-					withAnimation { proxy.scrollTo(id) }
-				}
+				.onAppear { updateColumns(width: geo.size.width) }
+				.onChange(of: geo.size.width) { _, width in updateColumns(width: width) }
 			}
 			.searchable(text: $search, placement: .navigationBarDrawer(displayMode: .automatic))
 			.refreshable { await refresh() }
 			.navigationTitle("iPlayGFN")
 			.toolbar {
-				ToolbarItem(placement: .topBarLeading) {
-					Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+				ToolbarItemGroup(placement: .topBarTrailing) {
+					filterMenu
+					sortMenu
+					Button { showingSettings = true } label: {
+						Image(systemName: "gearshape")
+					}
+					.accessibilityLabel("Settings")
 				}
 			}
 			.sheet(isPresented: $showingSettings) { SettingsView() }
@@ -95,7 +103,7 @@ struct LibraryView: View {
 			await refresh()
 		}
 		.onAppear {
-			gamepad.onMove = { moveSelection(by: $0) }
+			gamepad.onMove = { moveSelection($0) }
 			gamepad.onConfirm = {
 				if let game = shown.first(where: { $0.id == selection }) { play(game) }
 			}
@@ -106,7 +114,100 @@ struct LibraryView: View {
 		.onDisappear { gamepad.stop() }
 		.onChange(of: gamepadActive) { _, active in gamepad.setActive(active) }
 		.onChange(of: gamepad.confirmSymbol) { _, _ in ensureSelection() }
-		.onChange(of: games) { _, _ in ensureSelection() }
+		.onChange(of: shown.map(\.id)) { _, _ in ensureSelection() }
+		.onChange(of: stores) { _, stores in
+			if !storeFilter.isEmpty, !stores.contains(storeFilter) { storeFilter = "" }
+		}
+	}
+
+	@ViewBuilder
+	private var content: some View {
+		if games.isEmpty {
+			Group {
+				if loading {
+					ProgressView("Loading your games…")
+				} else {
+					ContentUnavailableView {
+						Label("No games yet", systemImage: "gamecontroller")
+					} description: {
+						Text(error ?? "Games you own show up here once you've linked their stores (Steam, Epic, Xbox and others) in GeForce NOW.")
+					} actions: {
+						Button("Refresh") { Task { await refresh() } }.buttonStyle(.borderedProminent)
+					}
+				}
+			}
+			.frame(maxWidth: .infinity)
+			.padding(.top, 80)
+		} else if shown.isEmpty {
+			Group {
+				if search.trimmingCharacters(in: .whitespaces).isEmpty {
+					ContentUnavailableView {
+						Label("Nothing on \(storeFilter)", systemImage: "line.3.horizontal.decrease.circle")
+					} actions: {
+						Button("Show all stores") { storeFilter = "" }
+					}
+				} else {
+					ContentUnavailableView.search(text: search)
+				}
+			}
+			.padding(.top, 80)
+		} else {
+			LazyVGrid(
+				columns: Array(repeating: GridItem(.flexible(), spacing: Self.spacing, alignment: .top), count: columnCount),
+				alignment: .leading,
+				spacing: Self.spacing + 4
+			) {
+				ForEach(shown) { game in
+					GameTile(
+						game: game,
+						selected: gamepad.confirmSymbol != nil && selection == game.id,
+						play: { play(game) },
+						chooseStore: game.ownedVariants.count > 1 ? { choosingStore = game } : nil
+					)
+					.id(game.id)
+				}
+			}
+			.padding(.horizontal, Self.margin)
+			.padding(.bottom, 24)
+			if let error {
+				Text(error)
+					.font(.footnote)
+					.foregroundStyle(.secondary)
+					.padding(.horizontal, Self.margin)
+					.padding(.bottom, 24)
+			}
+		}
+	}
+
+	private var filterMenu: some View {
+		Menu {
+			Picker("Store", selection: $storeFilter) {
+				Text("All stores").tag("")
+				ForEach(stores, id: \.self) { Text($0).tag($0) }
+			}
+		} label: {
+			Image(systemName: storeFilter.isEmpty
+				? "line.3.horizontal.decrease.circle"
+				: "line.3.horizontal.decrease.circle.fill")
+		}
+		.accessibilityLabel("Filter")
+	}
+
+	private var sortMenu: some View {
+		Menu {
+			Picker("Sort", selection: $sort) {
+				ForEach(LibrarySort.allCases) { Text($0.label).tag($0) }
+			}
+		} label: {
+			Image(systemName: "arrow.up.arrow.down")
+		}
+		.accessibilityLabel("Sort")
+	}
+
+	private func updateColumns(width: CGFloat) {
+		let available = width - Self.margin * 2
+		guard available > 0 else { return }
+		columnCount = max(2, Int((available + Self.spacing) / (minimumCoverWidth + Self.spacing)))
 	}
 
 	private func refresh() async {
@@ -139,56 +240,109 @@ struct LibraryView: View {
 		}
 	}
 
-	private func moveSelection(by delta: Int) {
+	/// Moves around the grid: left and right wrap between rows, up and down move a whole row
+	private func moveSelection(_ move: ListGamepadNavigator.Move) {
 		let ids = shown.map(\.id)
 		guard !ids.isEmpty else { return }
 		guard let current = selection, let index = ids.firstIndex(of: current) else {
 			selection = ids.first
 			return
 		}
-		selection = ids[min(max(index + delta, 0), ids.count - 1)]
+		let step = switch move {
+		case .left: -1
+		case .right: 1
+		case .up: -columnCount
+		case .down: columnCount
+		}
+		let next = index + step
+		if ids.indices.contains(next) {
+			selection = ids[next]
+		} else if move == .down, index / columnCount < (ids.count - 1) / columnCount {
+			// A short last row: drop to its last game
+			selection = ids.last
+		}
 	}
 }
 
-private struct GameRow: View {
+enum LibrarySort: String, CaseIterable, Identifiable {
+	case recent
+	case title
+
+	var id: Self { self }
+
+	var label: String {
+		switch self {
+		case .recent: "Recently played"
+		case .title: "A to Z"
+		}
+	}
+}
+
+/// A game's cover with its title under it. Tap to play.
+private struct GameTile: View {
 	let game: GFNGame
-	let confirmSymbol: String?
+	let selected: Bool
 	let play: () -> Void
+	let chooseStore: (() -> Void)?
 
 	var body: some View {
-		HStack(spacing: 14) {
-			AsyncImage(url: game.boxArtURL) { image in
-				image.resizable().aspectRatio(contentMode: .fill)
-			} placeholder: {
-				Color.secondary.opacity(0.2)
-					.overlay { Image(systemName: "gamecontroller").foregroundStyle(.secondary) }
-			}
-			.frame(width: 54, height: 72)
-			.clipShape(RoundedRectangle(cornerRadius: 6))
-
-			VStack(alignment: .leading, spacing: 3) {
-				Text(game.title).font(.headline).lineLimit(2)
-				Text(game.ownedVariants.map(\.storeName).joined(separator: " · "))
-					.font(.caption).foregroundStyle(.secondary)
-				if let remembered = StoreChoices.variant(for: game), game.ownedVariants.count > 1 {
-					Label("Plays on \(remembered.storeName)", systemImage: "checkmark.circle")
-						.font(.caption).foregroundStyle(.green)
+		Button(action: play) {
+			VStack(alignment: .leading, spacing: 8) {
+				cover
+				VStack(alignment: .leading, spacing: 2) {
+					Text(game.title)
+						.font(.subheadline.weight(.semibold))
+						.foregroundStyle(.primary)
+						.lineLimit(2)
+						.multilineTextAlignment(.leading)
+					Text(storeLine)
+						.font(.caption)
+						.foregroundStyle(.secondary)
+						.lineLimit(1)
 				}
 			}
-			Spacer()
-			Button(action: play) {
-				if let confirmSymbol {
-					HStack(spacing: 6) {
-						Image(systemName: confirmSymbol)
-						Text("Play")
-					}
-				} else {
-					Text("Play")
-				}
-			}
-			.buttonStyle(.borderedProminent)
+			.contentShape(Rectangle())
 		}
-		.padding(.vertical, 4)
+		.buttonStyle(.plain)
+		.accessibilityLabel(game.title)
+		.accessibilityHint("Plays the game")
+		.contextMenu {
+			Button(action: play) { Label("Play", systemImage: "play.fill") }
+			if let chooseStore {
+				Button(action: chooseStore) { Label("Choose store", systemImage: "bag") }
+			}
+		}
+	}
+
+	/// The store it'll play on when there's a remembered choice, otherwise every store you own it on
+	private var storeLine: String {
+		if game.ownedVariants.count > 1, let remembered = StoreChoices.variant(for: game) {
+			return "Plays on \(remembered.storeName)"
+		}
+		return game.ownedVariants.map(\.storeName).joined(separator: " · ")
+	}
+
+	private var cover: some View {
+		Color.secondary.opacity(0.15)
+			.aspectRatio(2.0 / 3.0, contentMode: .fit)
+			.overlay {
+				AsyncImage(url: game.boxArtURL) { phase in
+					if let image = phase.image {
+						image.resizable().aspectRatio(contentMode: .fill)
+					} else {
+						Image(systemName: "gamecontroller")
+							.font(.largeTitle)
+							.foregroundStyle(.secondary)
+					}
+				}
+			}
+			.clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+			.overlay {
+				RoundedRectangle(cornerRadius: 10, style: .continuous)
+					.strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: selected ? 3 : 0.5)
+			}
+			.scaleEffect(selected ? 1.04 : 1)
+			.animation(.easeOut(duration: 0.15), value: selected)
 	}
 }
 
@@ -223,7 +377,7 @@ private struct StoreChoiceView: View {
 				Section {
 					Toggle("Remember my choice", isOn: $remember)
 				} footer: {
-					Text("Press and hold the game in the list to choose again.")
+					Text("Press and hold the game's cover to choose again.")
 				}
 			}
 			.navigationTitle("Play on")

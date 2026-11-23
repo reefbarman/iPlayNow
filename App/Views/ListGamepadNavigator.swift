@@ -2,15 +2,17 @@ import GameController
 import SwiftUI
 
 /// Lets a game controller drive app screens outside the stream: the d-pad or
-/// left stick moves a selection, the bottom face button (A, or ✕ on PlayStation
-/// pads) confirms and the right one (B / ○) cancels.
+/// left stick moves a selection (up/down, or around a grid), the bottom face
+/// button (A, or ✕ on PlayStation pads) confirms and the right one (B / ○) cancels.
 ///
 /// Uses per-element handlers so it never touches the gamepad-wide
 /// `valueChangedHandler` that `ControllerInput` owns while streaming, and
 /// detaches entirely whenever its screen is covered or busy.
 @Observable
 final class ListGamepadNavigator {
-	@ObservationIgnored var onMove: ((Int) -> Void)?
+	enum Move { case up, down, left, right }
+
+	@ObservationIgnored var onMove: ((Move) -> Void)?
 	@ObservationIgnored var onConfirm: (() -> Void)?
 	@ObservationIgnored var onCancel: (() -> Void)?
 	/// SF Symbol for the connected controller's confirm button, nil without a controller
@@ -27,7 +29,7 @@ final class ListGamepadNavigator {
 	@ObservationIgnored private var active = false
 	@ObservationIgnored private var confirmArmed = false
 	@ObservationIgnored private var cancelArmed = false
-	@ObservationIgnored private var direction = 0
+	@ObservationIgnored private var direction: Move?
 	@ObservationIgnored private var repeatTimer: Timer?
 
 	func start() {
@@ -116,32 +118,37 @@ final class ListGamepadNavigator {
 		controller = nil
 		confirmArmed = false
 		cancelArmed = false
-		setDirection(0)
+		setDirection(nil)
 	}
 
 	private func updateDirection(_ pad: GCExtendedGamepad) {
+		let x = pad.leftThumbstick.xAxis.value
 		let y = pad.leftThumbstick.yAxis.value
 		if pad.dpad.up.isPressed || y > 0.6 {
-			setDirection(-1)
+			setDirection(.up)
 		} else if pad.dpad.down.isPressed || y < -0.6 {
-			setDirection(1)
-		} else if abs(y) < 0.4 {
-			setDirection(0)
+			setDirection(.down)
+		} else if pad.dpad.left.isPressed || x < -0.6 {
+			setDirection(.left)
+		} else if pad.dpad.right.isPressed || x > 0.6 {
+			setDirection(.right)
+		} else if abs(x) < 0.4 && abs(y) < 0.4 {
+			setDirection(nil)
 		}
 	}
 
 	/// Moves once, then repeats while held
-	private func setDirection(_ dir: Int) {
+	private func setDirection(_ dir: Move?) {
 		guard dir != direction else { return }
 		direction = dir
 		repeatTimer?.invalidate()
 		repeatTimer = nil
-		guard dir != 0 else { return }
+		guard let dir else { return }
 		onMove?(dir)
 		repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
 			self?.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
-				guard let self, self.direction != 0 else { return }
-				self.onMove?(self.direction)
+				guard let self, let direction = self.direction else { return }
+				self.onMove?(direction)
 			}
 		}
 	}

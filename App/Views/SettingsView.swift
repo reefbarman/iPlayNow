@@ -4,11 +4,13 @@ import SwiftUI
 /// Stream settings, shared by the main settings sheet and the in-stream menu.
 struct StreamSettingsForm: View {
 	@Binding var settings: StreamSettings
-	/// In the stream menu: video changes apply from the next game
-	var streaming = false
+	/// Off in the stream menu: GeForce NOW fixes the video settings for a session
+	var showsVideo = true
 
 	var body: some View {
-		VideoSettingsSection(settings: $settings, streaming: streaming)
+		if showsVideo {
+			VideoSettingsSection(settings: $settings)
+		}
 
 		Section {
 			SettingsLink(title: "Display", systemImage: "tv", summary: settings.displaySummary) {
@@ -308,7 +310,6 @@ private struct VirtualControlsSettingsPage: View {
 /// Resolution, frame rate, bitrate and codec: what to ask GeForce NOW for
 struct VideoSettingsSection: View {
 	@Binding var settings: StreamSettings
-	var streaming = false
 
 	var body: some View {
 		Section {
@@ -333,10 +334,7 @@ struct VideoSettingsSection: View {
 		} header: {
 			Text("Video")
 		} footer: {
-			Text("Your membership decides the most GeForce NOW will stream. 1440p and 120 fps need Ultimate.")
-			if streaming {
-				Text("Changes here apply from the next game.")
-			}
+			Text("Your membership decides the most GeForce NOW will stream. 1440p and 120 fps need Ultimate. These can't change during a game.")
 		}
 	}
 }

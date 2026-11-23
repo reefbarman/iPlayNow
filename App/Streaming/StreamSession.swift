@@ -45,8 +45,6 @@ final class StreamSession {
 	/// Folded or backgrounded: video isn't drawn and audio is muted, the stream stays up
 	private(set) var paused = false
 	private(set) var settings: StreamSettings
-	/// Settings changed that only apply to the next session (resolution, fps, bitrate, codec)
-	private(set) var settingsNeedRestart = false
 
 	let launch: GFNLaunch
 	var game: GFNGame { launch.game }
@@ -120,7 +118,6 @@ final class StreamSession {
 	/// From the "ended" screen: a fresh launch with the latest settings
 	func playAgain() {
 		streamSettings = settings
-		settingsNeedRestart = false
 		let size = settings.resolution.size
 		launch.setRequest(GFNStreamRequest(width: size.width, height: size.height, fps: settings.fps))
 		start()
@@ -214,11 +211,10 @@ final class StreamSession {
 
 	// MARK: - Settings
 
-	/// Applies new settings. Resolution, frame rate, bitrate and codec are fixed for a session.
+	/// Applies new settings. Resolution, frame rate, bitrate and codec are fixed for a session
+	/// (the stream menu doesn't offer them), so those keep coming from `streamSettings`.
 	func apply(_ new: StreamSettings) {
 		settings = new
-		settingsNeedRestart = new.resolution != streamSettings.resolution || new.fps != streamSettings.fps
-			|| new.bitrateMbps != streamSettings.bitrateMbps || new.codec != streamSettings.codec
 		input.gyroAimEnabled = new.gyroAim != .off
 		if new.gyroAim == .off, gyroStickPosition != .zero {
 			gyroStickPosition = .zero

@@ -14,8 +14,6 @@ struct StreamView: View {
 	@State private var showMenuButton = false
 	@State private var hideMenuButton: Task<Void, Never>?
 	@State private var folded = false
-	/// The user says this screen is fine, whatever the fold check thinks
-	@State private var playHereAnyway = false
 	/// Unfolded but the window is portrait: we wait (or pause) and ask the user
 	/// to turn the phone. Once a stream is landscape, AppDelegate locks it there.
 	@State private var portrait = false
@@ -189,7 +187,7 @@ struct StreamView: View {
 	private func update() {
 		let size = windowSize
 		guard size.width > 0, size.height > 0 else { return }
-		let isFolded = DeviceLayout.isFolded(size) && !playHereAnyway
+		let isFolded = DeviceLayout.isFolded(size)
 		folded = isFolded
 		portrait = !isFolded && !DeviceLayout.isPad && size.height > size.width
 		let canPlay = !isFolded && !portrait
@@ -505,15 +503,7 @@ struct StreamView: View {
 				if session == nil {
 					Text("Open your phone to play").font(.title2.bold())
 					Text("\(game.title) starts as soon as you unfold.").foregroundStyle(.secondary)
-					HStack {
-						Button("Cancel") { dismiss() }.buttonStyle(.bordered)
-						Button("Play here anyway") {
-							playHereAnyway = true
-							update()
-						}
-						.buttonStyle(.bordered)
-					}
-					.padding(.top, 8)
+					Button("Cancel") { dismiss() }.buttonStyle(.bordered).padding(.top, 8)
 				} else {
 					Text("Paused").font(.title2.bold())
 					Text("Unfold to keep playing.").foregroundStyle(.secondary)
@@ -529,10 +519,6 @@ struct StreamView: View {
 			Form {
 				Section {
 					Button("Resume") { showMenu = false }
-					Button("Xbox button") {
-						showMenu = false
-						session?.pressGuideButton()
-					}
 					Button("Quit game", role: .destructive) {
 						showMenu = false
 						dismiss()
@@ -554,7 +540,8 @@ struct StreamView: View {
 				} header: {
 					Text(DeviceLayout.isPad ? "iPad" : "Phone")
 				}
-				StreamSettingsForm(settings: $settingsStore.settings, streaming: true)
+				// Resolution, frame rate, bitrate and codec are fixed once the rig is set up
+				StreamSettingsForm(settings: $settingsStore.settings, showsVideo: false)
 			}
 			.navigationTitle(game.title)
 			.navigationBarTitleDisplayMode(.inline)
