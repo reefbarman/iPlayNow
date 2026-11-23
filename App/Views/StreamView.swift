@@ -6,6 +6,7 @@ struct StreamView: View {
 	let variant: GFNGameVariant
 
 	@Environment(SettingsStore.self) private var settingsStore
+	@Environment(GameSettingsStore.self) private var gameSettings
 	@Environment(GFNAccountStore.self) private var accounts
 	@Environment(\.dismiss) private var dismiss
 	@Environment(\.scenePhase) private var scenePhase
@@ -30,7 +31,8 @@ struct StreamView: View {
 	/// The corner hints show once per stream screen
 	@State private var hintShown = false
 
-	private var settings: StreamSettings { settingsStore.settings }
+	/// The shared settings with this game's own video settings on top
+	private var settings: StreamSettings { settingsStore.settings.applying(gameSettings.settings(for: game.id)) }
 
 	private var wantsVirtualControls: Bool {
 		switch settings.virtualControls {
@@ -560,7 +562,11 @@ struct StreamView: View {
 				} header: {
 					Text(DeviceLayout.isPad ? "iPad" : "Phone")
 				}
-				// Resolution, frame rate, bitrate and codec are fixed once the rig is set up
+				// Resolution, frame rate, bitrate, codec and HDR are fixed once the rig is set up
+				if let session {
+					VideoSettingsSummary(settings: session.streamSettings, stats: session.stats,
+						customGameName: gameSettings.settings(for: game.id) != nil ? game.title : nil)
+				}
 				StreamSettingsForm(settings: $settingsStore.settings, showsVideo: false)
 			}
 			.navigationTitle(game.title)
@@ -645,7 +651,7 @@ private struct StatsOverlay: View {
 		.minimumScaleFactor(0.7)
 	}
 
-	private var codec: String { settings.codec == .h265 ? "HEVC" : "H.264" }
+	private var codec: String { "\(settings.effectiveCodec == .h265 ? "HEVC" : "H.264")\(settings.hdr ? " HDR" : "")" }
 
 	private var simpleItems: [Item] {
 		var items = [

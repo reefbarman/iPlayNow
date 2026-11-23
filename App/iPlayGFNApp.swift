@@ -9,12 +9,14 @@ struct iPlayGFNApp: App {
 	@UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 	@State private var accounts = GFNAccountStore()
 	@State private var settings = SettingsStore()
+	@State private var gameSettings = GameSettingsStore()
 
 	var body: some Scene {
 		WindowGroup {
 			RootView()
 				.environment(accounts)
 				.environment(settings)
+				.environment(gameSettings)
 				.preferredColorScheme(.dark)
 				.background {
 					// Track the window shape so orientation follows fold/unfold

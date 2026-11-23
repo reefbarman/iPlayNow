@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 // MARK: - Stream settings
 
@@ -8,14 +9,16 @@ enum StreamResolution: Int, Codable, CaseIterable, Identifiable {
 	case p720 = 720
 	case p1080 = 1080
 	case p1440 = 1440
+	case p2160 = 2160
 
 	var id: Int { rawValue }
-	var label: String { "\(rawValue)p" }
+	var label: String { self == .p2160 ? "4K" : "\(rawValue)p" }
 	var size: (width: Int, height: Int) {
 		switch self {
 		case .p720: (1280, 720)
 		case .p1080: (1920, 1080)
 		case .p1440: (2560, 1440)
+		case .p2160: (3840, 2160)
 		}
 	}
 }
@@ -159,12 +162,15 @@ enum StatsMode: String, Codable, CaseIterable, Identifiable {
 
 struct StreamSettings: Codable, Equatable {
 	static let fpsOptions = [30, 60, 120]
-	static let maxBitrateMbps = 75
+	/// NVIDIA's own client announces a 100 Mbps ceiling
+	static let maxBitrateMbps = 100
 
 	var resolution: StreamResolution = .p1080
 	var fps: Int = 60
 	var bitrateMbps: Int = 50
 	var codec: VideoCodecChoice = .h265
+	/// HDR10. Needs H.265, an HDR screen, Ultimate and a game that supports it.
+	var hdr: Bool = false
 	var displayMode: DisplayMode = .fit
 	var upscaling: UpscalingMode = .sharp
 	var statsMode: StatsMode = .off
@@ -197,6 +203,32 @@ struct StreamSettings: Codable, Equatable {
 	/// Experimental: make an in-between frame for each pair of real ones (FrameGen.metal)
 	var frameGeneration: Bool = false
 
+	/// HDR needs HEVC
+	var effectiveCodec: VideoCodecChoice { hdr ? .h265 : codec }
+
+	/// The video part, which a game can override
+	var video: VideoSettings {
+		get { VideoSettings(resolution: resolution, fps: fps, bitrateMbps: bitrateMbps, codec: codec, hdr: hdr) }
+		set {
+			resolution = newValue.resolution
+			fps = newValue.fps
+			bitrateMbps = newValue.bitrateMbps
+			codec = newValue.codec
+			hdr = newValue.hdr
+		}
+	}
+
+	/// These settings with a game's own video settings on top
+	func applying(_ custom: VideoSettings?) -> StreamSettings {
+		guard let custom else { return self }
+		var settings = self
+		settings.video = custom
+		return settings
+	}
+
+	/// The screen can show HDR (iPhone 12 and later, recent iPads)
+	static var screenSupportsHDR: Bool { UIScreen.main.potentialEDRHeadroom > 1 }
+
 	init() {}
 
 	/// Missing keys keep their defaults, so adding a setting doesn't reset the others
@@ -208,6 +240,7 @@ struct StreamSettings: Codable, Equatable {
 		fps = Self.fpsOptions.contains(savedFPS) ? savedFPS : d.fps
 		bitrateMbps = min(Self.maxBitrateMbps, max(5, try c.decodeIfPresent(Int.self, forKey: .bitrateMbps) ?? d.bitrateMbps))
 		codec = (try? c.decodeIfPresent(VideoCodecChoice.self, forKey: .codec)) ?? d.codec
+		hdr = try c.decodeIfPresent(Bool.self, forKey: .hdr) ?? d.hdr
 		displayMode = (try? c.decodeIfPresent(DisplayMode.self, forKey: .displayMode)) ?? d.displayMode
 		upscaling = (try? c.decodeIfPresent(UpscalingMode.self, forKey: .upscaling)) ?? d.upscaling
 		statsMode = (try? c.decodeIfPresent(StatsMode.self, forKey: .statsMode)) ?? d.statsMode
@@ -228,6 +261,47 @@ struct StreamSettings: Codable, Equatable {
 		fixedSticks = try c.decodeIfPresent(Bool.self, forKey: .fixedSticks) ?? d.fixedSticks
 		highRefreshDisplay = try c.decodeIfPresent(Bool.self, forKey: .highRefreshDisplay) ?? d.highRefreshDisplay
 		frameGeneration = try c.decodeIfPresent(Bool.self, forKey: .frameGeneration) ?? d.frameGeneration
+	}
+}
+
+/// Resolution, frame rate, bitrate, codec and HDR: what GeForce NOW fixes for a session
+struct VideoSettings: Codable, Hashable {
+	var resolution: StreamResolution
+	var fps: Int
+	var bitrateMbps: Int
+	var codec: VideoCodecChoice
+	var hdr: Bool
+}
+
+/// Games with their own video settings, by game id
+@Observable
+final class GameSettingsStore {
+	private(set) var custom: [String: VideoSettings] {
+		didSet { save() }
+	}
+
+	@ObservationIgnored private let key = "gameVideoSettings"
+
+	init() {
+		if let data = UserDefaults.standard.data(forKey: key),
+			let decoded = try? JSONDecoder().decode([String: VideoSettings].self, from: data)
+		{
+			custom = decoded
+		} else {
+			custom = [:]
+		}
+	}
+
+	func settings(for gameID: String) -> VideoSettings? { custom[gameID] }
+
+	func set(_ settings: VideoSettings?, for gameID: String) {
+		custom[gameID] = settings
+	}
+
+	private func save() {
+		if let data = try? JSONEncoder().encode(custom) {
+			UserDefaults.standard.set(data, forKey: key)
+		}
 	}
 }
 

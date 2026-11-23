@@ -19,9 +19,11 @@ public struct NVSTStreamConfig: Sendable {
 	public var fps: Int
 	public var maxBitrateKbps: Int
 	public var codec: NVSTCodec
+	/// 10-bit HDR10 (HEVC only)
+	public var hdr: Bool
 
 	public init(sessionID: String, rtspsEndpoints: [String], width: Int, height: Int, fps: Int,
-				maxBitrateKbps: Int, codec: NVSTCodec) {
+				maxBitrateKbps: Int, codec: NVSTCodec, hdr: Bool = false) {
 		self.sessionID = sessionID
 		self.rtspsEndpoints = rtspsEndpoints
 		self.width = width
@@ -29,6 +31,7 @@ public struct NVSTStreamConfig: Sendable {
 		self.fps = fps
 		self.maxBitrateKbps = maxBitrateKbps
 		self.codec = codec
+		self.hdr = hdr && codec == .hevc
 	}
 }
 
@@ -487,7 +490,7 @@ actor NVSTRunner {
 		let input = NvstRtspNegotiationInput(sessionID: config.sessionID, rtspsEndpoints: config.rtspsEndpoints,
 			resolution: "\(config.width)x\(config.height)", fps: config.fps, codec: config.codec.rawValue,
 			bitrateKbps: config.maxBitrateKbps, maximumBitrateKbps: config.maxBitrateKbps,
-			colorQuality: "8bit_420", hdrEnabled: false, audioChannelCount: 2, rtcpOnSctp: true,
+			colorQuality: config.hdr ? "10bit_420" : "8bit_420", hdrEnabled: config.hdr, audioChannelCount: 2, rtcpOnSctp: true,
 			disablesOwdCongestionControl: false, vsyncMode: .adaptive,
 			announceOverrides: [("x-nv-vqos[0].dfc.enable", "0")])
 		do {

@@ -53,8 +53,8 @@ final class StreamSession {
 	@ObservationIgnored let input = ControllerInput()
 	@ObservationIgnored private let audio = AudioOutput()
 	@ObservationIgnored private var stream: NVSTStream?
-	/// The settings the stream was started with
-	@ObservationIgnored private var streamSettings: StreamSettings
+	/// The settings the stream was started with: its resolution, frame rate, bitrate, codec and HDR
+	@ObservationIgnored private(set) var streamSettings: StreamSettings
 	@ObservationIgnored private var physicalPad = NVSTGamepad()
 	@ObservationIgnored private var virtualPad = VirtualPadState()
 	@ObservationIgnored private var guideRelease: DispatchWorkItem?
@@ -73,9 +73,7 @@ final class StreamSession {
 	init(accounts: GFNAccountStore, game: GFNGame, variant: GFNGameVariant, settings: StreamSettings) {
 		self.settings = settings
 		self.streamSettings = settings
-		let size = settings.resolution.size
-		launch = GFNLaunch(accounts: accounts, game: game, variant: variant,
-			request: GFNStreamRequest(width: size.width, height: size.height, fps: settings.fps))
+		launch = GFNLaunch(accounts: accounts, game: game, variant: variant, request: Self.request(for: settings))
 		renderer = MetalRenderer()
 		let center = NotificationCenter.default
 		lifecycleObservers = [
@@ -87,6 +85,11 @@ final class StreamSession {
 			guard case .ready(let session) = phase else { return }
 			self?.connect(session)
 		}
+	}
+
+	private static func request(for settings: StreamSettings) -> GFNStreamRequest {
+		let size = settings.resolution.size
+		return GFNStreamRequest(width: size.width, height: size.height, fps: settings.fps, hdr: settings.hdr)
 	}
 
 	/// The view calls stop() when it goes away; this just drops the observers
@@ -118,8 +121,7 @@ final class StreamSession {
 	/// From the "ended" screen: a fresh launch with the latest settings
 	func playAgain() {
 		streamSettings = settings
-		let size = settings.resolution.size
-		launch.setRequest(GFNStreamRequest(width: size.width, height: size.height, fps: settings.fps))
+		launch.setRequest(Self.request(for: settings))
 		start()
 	}
 
@@ -133,7 +135,7 @@ final class StreamSession {
 		let config = NVSTStreamConfig(
 			sessionID: session.id, rtspsEndpoints: session.rtspsEndpoints,
 			width: size.width, height: size.height, fps: s.fps,
-			maxBitrateKbps: s.bitrateMbps * 1000, codec: s.codec == .h265 ? .hevc : .h264)
+			maxBitrateKbps: s.bitrateMbps * 1000, codec: s.effectiveCodec == .h265 ? .hevc : .h264, hdr: s.hdr)
 		let stream = NVSTStream(config: config)
 		self.stream = stream
 
@@ -234,7 +236,7 @@ final class StreamSession {
 
 	private func configureRenderer() {
 		renderer?.configure(
-			hdr: false, displayMode: settings.displayMode, upscaling: settings.upscaling,
+			hdr: streamSettings.hdr, displayMode: settings.displayMode, upscaling: settings.upscaling,
 			frameGeneration: frameGenerationActive, fps: streamSettings.fps,
 			frameCapture: false, smoothing: false,
 			screenHz: settings.highRefreshDisplay ? UIScreen.main.maximumFramesPerSecond : 60)

@@ -307,9 +307,10 @@ private struct VirtualControlsSettingsPage: View {
 	}
 }
 
-/// Resolution, frame rate, bitrate and codec: what to ask GeForce NOW for
+/// Resolution, frame rate, bitrate, codec and HDR: what to ask GeForce NOW for. A game can have its own.
 struct VideoSettingsSection: View {
 	@Binding var settings: StreamSettings
+	var customGameName: String?
 
 	var body: some View {
 		Section {
@@ -328,13 +329,89 @@ struct VideoSettingsSection: View {
 				Slider(value: Binding(get: { Double(settings.bitrateMbps) }, set: { settings.bitrateMbps = Int($0) }),
 					in: 5...Double(StreamSettings.maxBitrateMbps), step: 5)
 			}
-			Picker("Codec", selection: $settings.codec) {
+			Picker("Codec", selection: Binding(get: { settings.effectiveCodec }, set: { settings.codec = $0 })) {
 				ForEach(VideoCodecChoice.allCases) { Text($0.label).tag($0) }
 			}
+			.disabled(settings.hdr)
+			if StreamSettings.screenSupportsHDR || settings.hdr {
+				Toggle("HDR", isOn: $settings.hdr)
+			}
 		} header: {
-			Text("Video")
+			Text(customGameName.map { "Video for \($0)" } ?? "Video")
 		} footer: {
-			Text("Your membership decides the most GeForce NOW will stream. 1440p and 120 fps need Ultimate. These can't change during a game.")
+			Text("Your membership decides the most GeForce NOW will stream. 1440p, 4K, 120 fps and HDR need Ultimate, and HDR needs H.265 and a game that supports it. These can't change during a game.")
+			if customGameName == nil {
+				Text("To give a game its own video settings, press and hold its cover and tap Video settings.")
+			}
+		}
+	}
+}
+
+/// The stream menu's view of the video settings: what this session asked for, not editable
+struct VideoSettingsSummary: View {
+	let settings: StreamSettings
+	let stats: StreamStats
+	var customGameName: String?
+
+	var body: some View {
+		Section {
+			LabeledContent("Resolution", value: settings.resolution.label)
+			LabeledContent("Frame rate", value: "\(settings.fps) fps")
+			LabeledContent("Maximum bitrate", value: "\(settings.bitrateMbps) Mbps")
+			LabeledContent("Codec", value: settings.effectiveCodec.label)
+			LabeledContent("HDR", value: settings.hdr ? "On" : "Off")
+			if stats.width > 0 {
+				LabeledContent("Streaming at", value: "\(stats.width)×\(stats.height)")
+			}
+		} header: {
+			Text(customGameName.map { "Video for \($0)" } ?? "Video")
+		} footer: {
+			Text("GeForce NOW fixes these when it sets up the game, so change them in Settings (or the game's own video settings) before you play. Streaming at is what your membership and the game actually allow.")
+		}
+	}
+}
+
+/// A game's own video settings, for example 4K and HDR for one game and 1080p120 for another
+struct GameSettingsView: View {
+	let game: GFNGame
+
+	@Environment(GameSettingsStore.self) private var games
+	@Environment(SettingsStore.self) private var store
+	@Environment(\.dismiss) private var dismiss
+
+	private var custom: Binding<Bool> {
+		Binding(
+			get: { games.settings(for: game.id) != nil },
+			// Start from the shared settings, so turning it on changes nothing until you edit
+			set: { games.set($0 ? store.settings.video : nil, for: game.id) })
+	}
+
+	private var settings: Binding<StreamSettings> {
+		Binding(
+			get: { store.settings.applying(games.settings(for: game.id)) },
+			set: { new in
+				guard games.settings(for: game.id) != nil else { return }
+				games.set(new.video, for: game.id)
+			})
+	}
+
+	var body: some View {
+		NavigationStack {
+			Form {
+				Section {
+					Toggle("Custom video settings", isOn: custom)
+				} footer: {
+					Text("Give \(game.title) its own resolution, frame rate, bitrate, codec and HDR. Display and controller settings are always shared.")
+				}
+				if games.settings(for: game.id) != nil {
+					VideoSettingsSection(settings: settings, customGameName: game.title)
+				}
+			}
+			.navigationTitle(game.title)
+			.navigationBarTitleDisplayMode(.inline)
+			.toolbar {
+				ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+			}
 		}
 	}
 }

@@ -42,6 +42,14 @@ enum GFNSessions {
 			["key": "clientPhysicalResolution", "value": "{\"horizontalPixels\":\(request.width),\"verticalPixels\":\(request.height)}"],
 			["key": "surroundAudioInfo", "value": "2"],
 		]
+		// HDR asks for 10-bit with a typical HDR10 display; GeForce NOW falls back to SDR if it can't
+		let hdrMode = request.hdr ? 1 : 0
+		let displayData: Any = request.hdr
+			? ["desiredContentMaxLuminance": 1000, "desiredContentMinLuminance": 0, "desiredContentMaxFrameAverageLuminance": 500]
+			: NSNull()
+		let hdrCapabilities: Any = request.hdr
+			? ["version": 1, "hdrEdrSupportedFlagsInUint32": 1, "staticMetadataDescriptorId": 0]
+			: NSNull()
 		return ["sessionRequestData": [
 			"appId": variant.id,
 			"internalTitle": game.title,
@@ -61,16 +69,16 @@ enum GFNSessions {
 				"widthInPixels": request.width,
 				"heightInPixels": request.height,
 				"framesPerSecond": request.fps,
-				"sdrHdrMode": 0,
-				"displayData": NSNull(),
+				"sdrHdrMode": hdrMode,
+				"displayData": displayData,
 				"hdr10PlusGamingData": NSNull(),
 				"dpi": 100,
 			]],
 			"useOps": true,
 			"audioMode": 2,
 			"metaData": metadata,
-			"sdrHdrMode": 0,
-			"clientDisplayHdrCapabilities": NSNull(),
+			"sdrHdrMode": hdrMode,
+			"clientDisplayHdrCapabilities": hdrCapabilities,
 			"surroundAudioInfo": 0,
 			"remoteControllersBitmap": 1,
 			"clientTimezoneOffset": TimeZone.current.secondsFromGMT() * 1000,
@@ -85,8 +93,9 @@ enum GFNSessions {
 			"userAge": 26,
 			"requestedStreamingFeatures": [
 				"reflex": request.fps >= 120,
-				"bitDepth": 0,
-				"trueHdr": false,
+				// CloudMatch's enum: 1 is 10-bit
+				"bitDepth": request.hdr ? 1 : 0,
+				"trueHdr": request.hdr,
 				"enabledL4S": false,
 				"supportedHidDevices": 0,
 				"profile": 0,

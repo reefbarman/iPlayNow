@@ -11,6 +11,7 @@ struct LibraryView: View {
 	@State private var search = ""
 	@State private var showingSettings = false
 	@State private var choosingStore: GFNGame?
+	@State private var editingGame: GFNGame?
 	@State private var playing: Playing?
 	@State private var selection: String?
 	@State private var columnCount = 2
@@ -56,7 +57,7 @@ struct LibraryView: View {
 	}
 
 	private var gamepadActive: Bool {
-		playing == nil && !showingSettings && choosingStore == nil
+		playing == nil && !showingSettings && choosingStore == nil && editingGame == nil
 	}
 
 	var body: some View {
@@ -88,6 +89,7 @@ struct LibraryView: View {
 				}
 			}
 			.sheet(isPresented: $showingSettings) { SettingsView() }
+			.sheet(item: $editingGame) { GameSettingsView(game: $0) }
 			.sheet(item: $choosingStore) { game in
 				StoreChoiceView(game: game) { variant in
 					choosingStore = nil
@@ -162,7 +164,8 @@ struct LibraryView: View {
 						game: game,
 						selected: gamepad.confirmSymbol != nil && selection == game.id,
 						play: { play(game) },
-						chooseStore: game.ownedVariants.count > 1 ? { choosingStore = game } : nil
+						chooseStore: game.ownedVariants.count > 1 ? { choosingStore = game } : nil,
+						editSettings: { editingGame = game }
 					)
 					.id(game.id)
 				}
@@ -284,6 +287,9 @@ private struct GameTile: View {
 	let selected: Bool
 	let play: () -> Void
 	let chooseStore: (() -> Void)?
+	let editSettings: () -> Void
+
+	@Environment(GameSettingsStore.self) private var gameSettings
 
 	var body: some View {
 		Button(action: play) {
@@ -311,6 +317,7 @@ private struct GameTile: View {
 			if let chooseStore {
 				Button(action: chooseStore) { Label("Choose store", systemImage: "bag") }
 			}
+			Button(action: editSettings) { Label("Video settings", systemImage: "slider.horizontal.3") }
 		}
 	}
 
@@ -340,6 +347,18 @@ private struct GameTile: View {
 			.overlay {
 				RoundedRectangle(cornerRadius: 10, style: .continuous)
 					.strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: selected ? 3 : 0.5)
+			}
+			.overlay(alignment: .topTrailing) {
+				// This game has its own video settings
+				if let custom = gameSettings.settings(for: game.id) {
+					Text(custom.hdr ? "\(custom.resolution.label) HDR" : custom.resolution.label)
+						.font(.caption2.weight(.bold))
+						.foregroundStyle(.white)
+						.padding(.horizontal, 6)
+						.padding(.vertical, 3)
+						.background(.black.opacity(0.7), in: Capsule())
+						.padding(6)
+				}
 			}
 			.scaleEffect(selected ? 1.04 : 1)
 			.animation(.easeOut(duration: 0.15), value: selected)

@@ -132,6 +132,8 @@ struct GFNStreamRequest: Hashable {
 	var width: Int
 	var height: Int
 	var fps: Int
+	/// 10-bit HDR10. Needs HEVC, and the game and membership have to support it.
+	var hdr = false
 	var keyboardLayout = "en-US"
 	var language = "en_US"
 }
