@@ -80,8 +80,20 @@ final class MetalRenderer {
 	private var screenshotFrame: ScreenshotFrame?
 
 	// Frame generation (experimental)
+	/// Switched on in settings. It only runs while the game's own frame rate fits twice into the screen's.
 	private var frameGeneration = false
+	/// The stream's requested frame interval, and the screen's refresh rate
 	private var frameInterval: CFTimeInterval = 1.0 / 60
+	private var screenHz = 60
+	/// Video thread only: frame generation is wanted and new frames are being measured
+	private var measuring = false
+	/// Video thread only: time between new game frames, smoothed. Can be longer than the
+	/// stream's frame interval, e.g. a 60 fps game in a 120 fps stream.
+	private var newFrameInterval: CFTimeInterval = 1.0 / 60
+	/// Video thread only: when the game's frame rate was last checked, and how many checks in a
+	/// row it's been on the other side of the line (so it doesn't flip on and off)
+	private var lastRateCheck: CFTimeInterval = 0
+	private var rateStreak = 0
 	/// Video thread only
 	private let frameGenerator: FrameGenerator?
 	/// Video thread only: the generator used for the last frame (nil when off)
@@ -129,6 +141,10 @@ final class MetalRenderer {
 	private(set) var generateMs: Double = 0
 	/// Frame generation's quality level when it's stepped down (stats)
 	private(set) var frameGenStatus: String?
+	/// Frame generation is making frames: on, and the game is slow enough for the screen (stats)
+	private(set) var frameGenRunning = false
+	/// New game frames a second, measured while frame generation is on; 0 before the first check (stats)
+	private(set) var gameFPS: Double = 0
 	/// The screen's current refresh rate, from the display link (stats)
 	var displayHz: Double = 0
 
@@ -179,7 +195,7 @@ final class MetalRenderer {
 		applyOutputMode(to: layer)
 	}
 
-	/// Frame generation should only be on when the screen can show twice `fps`
+	/// `frameGeneration` is the setting; it runs while the measured game frame rate fits twice into `screenHz`
 	func configure(
 		hdr: Bool, displayMode: DisplayMode, upscaling: UpscalingMode, frameGeneration: Bool, fps: Int, frameCapture: Bool,
 		smoothing: Bool, screenHz: Int
@@ -203,6 +219,7 @@ final class MetalRenderer {
 			self.upscaling = upscaling
 			self.frameGeneration = frameGeneration
 			self.frameInterval = 1.0 / Double(max(fps, 1))
+			self.screenHz = max(screenHz, 1)
 			if frameCapture, capture == nil {
 				capture = FrameCapture(device: device)
 			} else if !frameCapture {
@@ -312,16 +329,16 @@ final class MetalRenderer {
 		let paused = self.paused
 		let frameGeneration = self.frameGeneration
 		let interval = frameInterval
+		let screenHz = self.screenHz
 		let inFlight = self.inFlight
 		let generateMs = self.generateMs
 		let capture = self.capture
 		lock.unlock()
 
-		let generator = paused ? nil : pickGenerator(frameGeneration)
-		if generator !== activeGenerator {
-			previous = nil
-			activeGenerator?.reset()
-			activeGenerator = generator
+		// Measuring new frames runs whenever frame generation is switched on, generating or not
+		let wanted = frameGeneration && !paused
+		if wanted != measuring {
+			measuring = wanted
 			lastSignature = []
 			framesSinceNew = 1
 			repeatHistory = 0
@@ -329,6 +346,18 @@ final class MetalRenderer {
 			dropRepeats = false
 			lastNewFrameAt = 0
 			lostSinceNew = false
+			newFrameInterval = interval
+			lastRateCheck = 0
+			rateStreak = 0
+			// Start as the requested frame rate allows; the measurement corrects it
+			frameGenRunning = wanted && interval * Double(screenHz) >= 2 * 0.95
+			gameFPS = 0
+		}
+		let generator = pickGenerator(wanted && frameGenRunning)
+		if generator !== activeGenerator {
+			previous = nil
+			activeGenerator?.reset()
+			activeGenerator = generator
 			lock.withLock { self.generateMs = 0 }
 		}
 		if let capture {
@@ -360,23 +389,33 @@ final class MetalRenderer {
 		// for the motion search, so blending them makes things vanish or
 		// smear. Show only the real frame then.
 		var discontinuity = false
-		if generator != nil {
+		if wanted {
 			let signature = Self.lumaSignature(pixelBuffer, tenBit: tenBit)
 			let looksRepeated = Self.isRepeat(signature, of: lastSignature)
 			noteRepeat(looksRepeated)
 			if dropRepeats, looksRepeated, framesSinceNew < 3 {
 				framesSinceNew += 1
-				repeatedFrames += 1
-				capture?.note(.repeated, pair: realFrames)
-				return
+				if generator != nil {
+					repeatedFrames += 1
+					capture?.note(.repeated, pair: realFrames)
+					return
+				}
+				// Not generating: still shown, but it isn't a new game frame
+			} else {
+				lastSignature = signature
+				framesSinceNew = 1
+				let now = CACurrentMediaTime()
+				let since = now - lastNewFrameAt
+				discontinuity = lostSinceNew || (lastNewFrameAt > 0 && since > newFrameInterval * 2.5)
+				if lastNewFrameAt > 0, !lostSinceNew {
+					// Capped, so a hitch nudges it rather than throwing it, but a real drop still gets there
+					newFrameInterval = newFrameInterval * 0.9 + min(since, newFrameInterval * 2) * 0.1
+				}
+				lastNewFrameAt = now
+				lostSinceNew = false
+				gap = newFrameInterval
+				checkGameRate(now: now, screenHz: screenHz)
 			}
-			gap = interval * Double(framesSinceNew)
-			lastSignature = signature
-			framesSinceNew = 1
-			let now = CACurrentMediaTime()
-			discontinuity = lostSinceNew || (lastNewFrameAt > 0 && now - lastNewFrameAt > gap * 2.5)
-			lastNewFrameAt = now
-			lostSinceNew = false
 		}
 		realFrames += 1
 
@@ -548,6 +587,27 @@ final class MetalRenderer {
 				size: CGSize(width: drawable.texture.width, height: drawable.texture.height))
 		}
 		presentedFrames += 1
+	}
+
+	/// Once a second: frame generation runs when the game's frame rate fits twice into the
+	/// screen's, and stops after two checks clearly above. The gap between keeps a game
+	/// hovering around 60 from flipping it on and off. Video thread only.
+	private func checkGameRate(now: CFTimeInterval, screenHz: Int) {
+		guard lastRateCheck > 0 else {
+			lastRateCheck = now
+			return
+		}
+		guard now - lastRateCheck >= 1 else { return }
+		lastRateCheck = now
+		let fps = 1 / newFrameInterval
+		gameFPS = fps
+		let limit = Double(screenHz) / 2
+		let flip = frameGenRunning ? fps > limit * 1.12 : fps <= limit * 1.05
+		rateStreak = flip ? rateStreak + 1 : 0
+		guard rateStreak >= 2 else { return }
+		rateStreak = 0
+		frameGenRunning.toggle()
+		log.notice("Frame gen: game at \(Int(fps.rounded()), privacy: .public) fps on a \(screenHz, privacy: .public) Hz screen, \(self.frameGenRunning ? "generating" : "paused", privacy: .public)")
 	}
 
 	/// Tracks whether recent stream frames looked like repeats, and turns repeat

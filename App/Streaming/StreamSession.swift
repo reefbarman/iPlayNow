@@ -16,8 +16,10 @@ struct StreamStats: Equatable {
 	var controller: String?
 	/// The screen's refresh rate, 0 if unknown
 	var displayHz: Double = 0
-	/// Frame generation is running (on, and the screen is fast enough)
+	/// Frame generation is running (on, and the game's frame rate fits twice into the screen's)
 	var frameGenActive = false
+	/// Why frame generation is on in Settings but not running, e.g. "game at 90 fps, needs 60 or less"
+	var frameGenOffReason: String?
 	/// In-between frames made and skipped in the last second, and GPU ms per frame
 	var generatedFPS = 0
 	var skippedFrames = 0
@@ -228,18 +230,27 @@ final class StreamSession {
 		configureRenderer()
 	}
 
-	/// Frame generation needs a screen that can show twice the stream's frame rate
-	private var frameGenerationActive: Bool {
-		let screenHz = settings.highRefreshDisplay ? UIScreen.main.maximumFramesPerSecond : 60
-		return settings.frameGeneration && streamSettings.fps * 2 <= screenHz
+	private var screenHz: Int {
+		settings.highRefreshDisplay ? UIScreen.main.maximumFramesPerSecond : 60
 	}
 
+	/// The renderer decides when frame generation runs, from the game's measured frame rate:
+	/// a 60 fps game in a 120 fps stream still gets it on a 120 Hz screen
 	private func configureRenderer() {
 		renderer?.configure(
 			hdr: streamSettings.hdr, displayMode: settings.displayMode, upscaling: settings.upscaling,
-			frameGeneration: frameGenerationActive, fps: streamSettings.fps,
-			frameCapture: false, smoothing: false,
-			screenHz: settings.highRefreshDisplay ? UIScreen.main.maximumFramesPerSecond : 60)
+			frameGeneration: settings.frameGeneration, fps: streamSettings.fps,
+			frameCapture: false, smoothing: false, screenHz: screenHz)
+	}
+
+	/// Plain words for why frame generation isn't running
+	private func frameGenOffReason(gameFPS: Double) -> String {
+		guard gameFPS > 0 else { return "measuring" }
+		let canDouble = gameFPS <= Double(UIScreen.main.maximumFramesPerSecond) / 2 * 1.05
+		if !settings.highRefreshDisplay, UIScreen.main.maximumFramesPerSecond > 60, canDouble {
+			return "turn on 120 Hz screen"
+		}
+		return "game at \(Int(gameFPS.rounded())) fps, needs \(screenHz / 2) or less"
 	}
 
 	func setPaused(_ paused: Bool) {
@@ -358,7 +369,10 @@ final class StreamSession {
 		s.controller = input.controllerName
 		if let renderer {
 			s.displayHz = renderer.displayHz
-			s.frameGenActive = frameGenerationActive
+			s.frameGenActive = settings.frameGeneration && renderer.frameGenRunning
+			if settings.frameGeneration, !s.frameGenActive {
+				s.frameGenOffReason = frameGenOffReason(gameFPS: renderer.gameFPS)
+			}
 			s.generatedFPS = renderer.generatedFrames - lastGenerated
 			s.skippedFrames = renderer.skippedFrames - lastSkipped
 			s.repeatedFrames = renderer.repeatedFrames - lastRepeated

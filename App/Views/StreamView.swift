@@ -684,7 +684,7 @@ private struct StatsOverlay: View {
 				items.append(Item(label: "FG", value: fg))
 				items.append(Item(label: "skip/rep", value: "\(stats.skippedFrames)/\(stats.repeatedFrames)"))
 			} else {
-				items.append(Item(label: "FG", value: "off (screen too slow)", warn: true))
+				items.append(Item(label: "FG", value: "off (\(stats.frameGenOffReason ?? "measuring"))", warn: true))
 			}
 		}
 		if let controller = stats.controller {
