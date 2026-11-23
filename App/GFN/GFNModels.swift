@@ -82,6 +82,9 @@ struct GFNGameVariant: Identifiable, Codable, Hashable {
 	var store: String
 	var storeName: String
 	var isOwned: Bool
+	/// GeForce NOW runs this copy with ray tracing / HDR
+	var rtx = false
+	var hdr = false
 
 	/// Launch priority when a game is owned on several stores: Steam, Epic, GOG, Xbox, then the rest
 	var storeRank: Int {
@@ -125,6 +128,23 @@ struct GFNGame: Identifiable, Codable, Hashable {
 			.filter { $0.element.isOwned }
 			.sorted { ($0.element.storeRank, $0.offset) < ($1.element.storeRank, $1.offset) }
 			.map(\.element)
+	}
+
+	/// Tags for the cover, from any copy you own
+	var supportsRTX: Bool { ownedVariants.contains(where: \.rtx) }
+	var supportsHDR: Bool { ownedVariants.contains(where: \.hdr) }
+}
+
+extension GFNGameVariant {
+	// Libraries cached before the tags existed have no rtx/hdr keys
+	init(from decoder: Decoder) throws {
+		let c = try decoder.container(keyedBy: CodingKeys.self)
+		id = try c.decode(String.self, forKey: .id)
+		store = try c.decode(String.self, forKey: .store)
+		storeName = try c.decode(String.self, forKey: .storeName)
+		isOwned = try c.decode(Bool.self, forKey: .isOwned)
+		rtx = try c.decodeIfPresent(Bool.self, forKey: .rtx) ?? false
+		hdr = try c.decodeIfPresent(Bool.self, forKey: .hdr) ?? false
 	}
 }
 

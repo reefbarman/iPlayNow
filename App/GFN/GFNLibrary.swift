@@ -2,30 +2,43 @@ import Foundation
 
 /// The games the account owns, from GeForce NOW's GraphQL catalogue.
 enum GFNLibrary {
-	private static let query = """
-	query OwnedGames($vpcId: String!, $cursor: String!, $filters: AppFilterFields!, $sort: String!) {
-	  apps(vpcId: $vpcId, language: "en_US", orderBy: $sort, first: 250, after: $cursor, filters: $filters) {
-	    pageInfo { hasNextPage endCursor }
-	    items {
-	      id title genres
-	      images { GAME_BOX_ART TV_BANNER HERO_IMAGE }
-	      variants { id appStore gfn { library { status lastPlayedDate } } }
-	    }
-	  }
-	}
+	/// Feature flags (RTX, HDR) come back as a union of key/value shapes
+	private static let featureFields = """
+	features { __typename ... on GfnSubscriptionFeatureInterface { key } ... on GfnSubscriptionFeatureValue { value } ... on GfnSubscriptionFeatureValueList { values } }
 	"""
+
+	private static func query(features: Bool) -> String {
+		"""
+		query OwnedGames($vpcId: String!, $cursor: String!, $filters: AppFilterFields!, $sort: String!) {
+		  apps(vpcId: $vpcId, language: "en_US", orderBy: $sort, first: 250, after: $cursor, filters: $filters) {
+		    pageInfo { hasNextPage endCursor }
+		    items {
+		      id title genres
+		      images { GAME_BOX_ART TV_BANNER HERO_IMAGE }
+		      variants { id appStore gfn { library { status lastPlayedDate } \(features ? featureFields : "") } }
+		    }
+		  }
+		}
+		"""
+	}
 
 	@MainActor
 	static func ownedGames(accounts: GFNAccountStore) async throws -> [GFNGame] {
 		guard let provider = accounts.account?.provider else { throw GFNError.notSignedIn }
 		let token = try await accounts.accessToken()
 		let vpcID = await GFNServerInfo.vpcID(token: token, provider: provider) ?? "GFN-PC"
-		let games = try await fetch(token: token, vpcID: vpcID)
+		let games: [GFNGame]
+		do {
+			games = try await fetch(token: token, vpcID: vpcID, features: true)
+		} catch GFNError.server {
+			// The tags are a nice-to-have; don't lose the library if the catalogue rejects them
+			games = try await fetch(token: token, vpcID: vpcID, features: false)
+		}
 		save(games)
 		return games
 	}
 
-	private static func fetch(token: String, vpcID: String) async throws -> [GFNGame] {
+	private static func fetch(token: String, vpcID: String, features: Bool) async throws -> [GFNGame] {
 		var headers = GFNHTTP.desktopHeaders(token: token)
 		headers["Content-Type"] = "application/json"
 		var cursor = ""
@@ -35,7 +48,7 @@ enum GFNLibrary {
 		for _ in 0..<40 {
 			try Task.checkCancellation()
 			let body = try JSONSerialization.data(withJSONObject: [
-				"query": query,
+				"query": query(features: features),
 				"variables": [
 					"vpcId": vpcID,
 					"cursor": cursor,
@@ -77,7 +90,9 @@ enum GFNLibrary {
 			guard let variantID = GFNHTTP.string(variant["id"]), Int(variantID) != nil,
 				  !variants.contains(where: { $0.id == variantID }) else { continue }
 			let store = GFNHTTP.string(variant["appStore"])?.uppercased() ?? "NONE"
-			let library = (variant["gfn"] as? [String: Any])?["library"] as? [String: Any]
+			let gfn = variant["gfn"] as? [String: Any]
+			let library = gfn?["library"] as? [String: Any]
+			let flags = parseFeatures(gfn?["features"])
 			let status = GFNHTTP.string(library?["status"])?.uppercased() ?? ""
 			if let played = parseDate(library?["lastPlayedDate"]) {
 				lastPlayed = max(lastPlayed ?? played, played)
@@ -88,7 +103,9 @@ enum GFNLibrary {
 				storeName: GFNGameVariant.storeName(for: store),
 				// Seen values: MANUAL, PLATFORM_SYNC, IN_LIBRARY. Treat anything else that isn't
 				// NOT_OWNED as owned too, matching the query's own filter.
-				isOwned: !status.isEmpty && status != "NOT_OWNED"
+				isOwned: !status.isEmpty && status != "NOT_OWNED",
+				rtx: flags.rtx,
+				hdr: flags.hdr
 			))
 		}
 		return GFNGame(
@@ -100,6 +117,23 @@ enum GFNLibrary {
 			lastPlayed: lastPlayed,
 			variants: variants
 		)
+	}
+
+	/// RTX_ENABLED and HDR_ENABLED are booleans (sometimes as strings); SUPPORTED_HDR_VERSION lists HDR formats
+	private static func parseFeatures(_ value: Any?) -> (rtx: Bool, hdr: Bool) {
+		var rtx = false, hdr = false
+		for flag in value as? [[String: Any]] ?? [] {
+			let key = GFNHTTP.string(flag["key"])?.uppercased() ?? ""
+			let on = flag["value"] as? Bool == true || (flag["value"] as? String)?.lowercased() == "true"
+			switch key {
+			case "RTX_ENABLED": rtx = rtx || on
+			case "HDR_ENABLED": hdr = hdr || on
+			case "SUPPORTED_HDR_VERSION":
+				if let values = flag["values"] as? [String], values.contains(where: { !$0.isEmpty }) { hdr = true }
+			default: break
+			}
+		}
+		return (rtx, hdr)
 	}
 
 	private static func parseDate(_ value: Any?) -> Date? {

@@ -360,8 +360,27 @@ private struct GameTile: View {
 						.padding(6)
 				}
 			}
+			.overlay(alignment: .bottomLeading) {
+				// What GeForce NOW offers for this game, unlike the badge above which is your choice
+				HStack(spacing: 4) {
+					if game.supportsRTX { tag("RTX", fill: Color(red: 0.46, green: 0.73, blue: 0)) }
+					if game.supportsHDR { tag("HDR", fill: .white, text: .black) }
+				}
+				.padding(6)
+			}
 			.scaleEffect(selected ? 1.04 : 1)
 			.animation(.easeOut(duration: 0.15), value: selected)
+	}
+
+	private func tag(_ label: String, fill: Color, text: Color = .white) -> some View {
+		Text(label)
+			.font(.system(size: 9, weight: .heavy))
+			.foregroundStyle(text)
+			.padding(.horizontal, 4)
+			.padding(.vertical, 2)
+			.background(fill, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+			.shadow(color: .black.opacity(0.4), radius: 2)
+			.accessibilityLabel(label == "RTX" ? "Ray tracing" : label)
 	}
 }
 
