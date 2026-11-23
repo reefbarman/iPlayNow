@@ -1,28 +1,20 @@
-import ChiakiKit
 import SwiftUI
 import os
 
-let logSubsystem = Bundle.main.bundleIdentifier ?? "iplay5"
+let logSubsystem = Bundle.main.bundleIdentifier ?? "iplaygfn"
 let log = Logger(subsystem: logSubsystem, category: "app")
-let chiakiLog = Logger(subsystem: logSubsystem, category: "chiaki")
 
 @main
-struct iPlay5App: App {
+struct iPlayGFNApp: App {
 	@UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-	@State private var consoles = ConsoleStore()
+	@State private var accounts = GFNAccountStore()
 	@State private var settings = SettingsStore()
-	@State private var bitrateMemory = BitrateMemory()
-
-	init() {
-		ChiakiLib.initialise()
-	}
 
 	var body: some Scene {
 		WindowGroup {
-			ConsoleListView()
-				.environment(consoles)
+			RootView()
+				.environment(accounts)
 				.environment(settings)
-				.environment(bitrateMemory)
 				.preferredColorScheme(.dark)
 				.background {
 					// Track the window shape so orientation follows fold/unfold
@@ -33,6 +25,19 @@ struct iPlay5App: App {
 					}
 					.ignoresSafeArea()
 				}
+		}
+	}
+}
+
+/// Sign-in until there's an account, then the library
+private struct RootView: View {
+	@Environment(GFNAccountStore.self) private var accounts
+
+	var body: some View {
+		if accounts.account == nil {
+			SignInView()
+		} else {
+			LibraryView()
 		}
 	}
 }
@@ -129,24 +134,3 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 	}
 }
 
-enum ChiakiLib {
-	private static let once: Void = {
-		ck_set_log_callback({ _, level, message in
-			guard let message else { return }
-			let text = String(cString: message)
-			if level & 1 != 0 {
-				chiakiLog.error("\(text, privacy: .public)")
-			} else {
-				chiakiLog.info("\(text, privacy: .public)")
-			}
-		}, nil)
-		let err = ck_lib_init()
-		if err != 0 {
-			log.error("chiaki lib init failed: \(err)")
-		}
-	}()
-
-	static func initialise() {
-		_ = once
-	}
-}
