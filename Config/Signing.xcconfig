@@ -1,0 +1,9 @@
+// Code signing for the iPlayGFN app and its queue widget.
+//
+// Don't edit this file. Copy Local.xcconfig.example to Local.xcconfig (git ignored)
+// and set your own Apple team ID and a bundle ID you own.
+
+DEVELOPMENT_TEAM =
+IPLAYGFN_BUNDLE_ID = io.github.reefbarman.iplaygfn
+
+#include? "Local.xcconfig"
