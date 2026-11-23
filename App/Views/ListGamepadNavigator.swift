@@ -165,20 +165,20 @@ struct GamepadHintBar: View {
 	let hints: [GamepadHint]
 
 	var body: some View {
-		HStack(spacing: 16) {
+		HStack(spacing: 14) {
 			ForEach(hints) { hint in
-				HStack(spacing: 5) {
-					Image(systemName: hint.symbol).imageScale(.large)
+				HStack(spacing: 4) {
+					Image(systemName: hint.symbol)
 					Text(hint.label)
 				}
 			}
 		}
-		.font(.footnote.weight(.medium))
+		.font(.caption.weight(.medium))
 		.foregroundStyle(.secondary)
 		.lineLimit(1)
 		.minimumScaleFactor(0.8)
 		.frame(maxWidth: .infinity)
-		.padding(.vertical, 10)
+		.padding(.vertical, 4)
 		.padding(.horizontal, 12)
 		.background(.bar)
 	}
