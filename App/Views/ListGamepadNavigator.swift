@@ -168,23 +168,24 @@ struct GamepadHintBar: View {
 		HStack(spacing: 16) {
 			ForEach(hints) { hint in
 				HStack(spacing: 5) {
-					Image(systemName: hint.symbol)
+					Image(systemName: hint.symbol).imageScale(.large)
 					Text(hint.label)
 				}
 			}
 		}
-		.font(.footnote.weight(.medium))
+		.font(.subheadline.weight(.medium))
 		.foregroundStyle(.secondary)
 		.lineLimit(1)
 		.minimumScaleFactor(0.8)
 		.frame(maxWidth: .infinity)
-		.padding(.top, 8)
-		// Sit down in the home indicator's strip, just clear of the indicator, rather than above it
-		.padding(.bottom, max(8, Self.bottomInset - 14))
+		.padding(.vertical, 6)
 		.padding(.horizontal, 12)
-		.background(.bar)
+		// Sink into the home indicator's strip (keeping 18 pt clear of the screen edge) instead of
+		// stacking on top of it. Negative padding shrinks the space the bar takes from the content.
+		.padding(.bottom, -max(0, Self.bottomInset - 12))
 		// Centred on the screen, not on the covers, which leave room for the side toolbar
-		.ignoresSafeArea(.container, edges: [.bottom, .horizontal])
+		.background(.bar, ignoresSafeAreaEdges: [.bottom, .horizontal])
+		.ignoresSafeArea(.container, edges: .horizontal)
 	}
 
 	private static var bottomInset: CGFloat {
