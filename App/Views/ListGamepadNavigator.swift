@@ -4,6 +4,7 @@ import SwiftUI
 /// Lets a game controller drive app screens outside the stream: the d-pad or
 /// left stick moves a selection (up/down, or around a grid), the bottom face
 /// button (A, or ✕ on PlayStation pads) confirms and the right one (B / ○) cancels.
+/// Y (△) and X (□) are free for a screen's own actions.
 ///
 /// Uses per-element handlers so it never touches the gamepad-wide
 /// `valueChangedHandler` that `ControllerInput` owns while streaming, and
@@ -15,10 +16,16 @@ final class ListGamepadNavigator {
 	@ObservationIgnored var onMove: ((Move) -> Void)?
 	@ObservationIgnored var onConfirm: (() -> Void)?
 	@ObservationIgnored var onCancel: (() -> Void)?
+	/// Y / △
+	@ObservationIgnored var onTop: (() -> Void)?
+	/// X / □
+	@ObservationIgnored var onLeft: (() -> Void)?
 	/// SF Symbol for the connected controller's confirm button, nil without a controller
 	private(set) var confirmSymbol: String?
 	/// SF Symbol for the connected controller's cancel button, nil without a controller
 	private(set) var cancelSymbol: String?
+	private(set) var topSymbol: String?
+	private(set) var leftSymbol: String?
 
 	/// The navigator whose handlers are on the controller. Only one screen drives it
 	/// at a time, and a screen going away mustn't clear handlers the next one set.
@@ -27,8 +34,6 @@ final class ListGamepadNavigator {
 	@ObservationIgnored private var controller: GCController?
 	@ObservationIgnored private var observers: [NSObjectProtocol] = []
 	@ObservationIgnored private var active = false
-	@ObservationIgnored private var confirmArmed = false
-	@ObservationIgnored private var cancelArmed = false
 	@ObservationIgnored private var direction: Move?
 	@ObservationIgnored private var repeatTimer: Timer?
 
@@ -48,6 +53,8 @@ final class ListGamepadNavigator {
 		detach()
 		confirmSymbol = nil
 		cancelSymbol = nil
+		topSymbol = nil
+		leftSymbol = nil
 	}
 
 	func setActive(_ active: Bool) {
@@ -58,8 +65,12 @@ final class ListGamepadNavigator {
 	private func refresh() {
 		let candidates = GCController.controllers().filter { $0.extendedGamepad != nil }
 		let next = GCController.current.flatMap { candidates.contains($0) ? $0 : nil } ?? candidates.first
-		confirmSymbol = next.map(Self.confirmSymbol(for:))
-		cancelSymbol = next.map(Self.cancelSymbol(for:))
+		let pad = next?.extendedGamepad
+		let playStation = pad is GCDualSenseGamepad || pad is GCDualShockGamepad
+		confirmSymbol = pad.map { Self.symbol($0.buttonA, fallback: playStation ? "xmark.circle" : "a.circle") }
+		cancelSymbol = pad.map { Self.symbol($0.buttonB, fallback: playStation ? "circle.circle" : "b.circle") }
+		topSymbol = pad.map { Self.symbol($0.buttonY, fallback: playStation ? "triangle.circle" : "y.circle") }
+		leftSymbol = pad.map { Self.symbol($0.buttonX, fallback: playStation ? "square.circle" : "x.circle") }
 
 		let wanted = active ? next : nil
 		guard wanted !== controller || (wanted != nil && Self.owner !== self) else { return }
@@ -69,42 +80,30 @@ final class ListGamepadNavigator {
 		Self.owner = self
 		pad.dpad.valueChangedHandler = { [weak self] _, _, _ in self?.updateDirection(pad) }
 		pad.leftThumbstick.valueChangedHandler = { [weak self] _, _, _ in self?.updateDirection(pad) }
-		pad.buttonA.pressedChangedHandler = { [weak self] _, _, pressed in
+		onRelease(pad.buttonA) { $0.onConfirm?() }
+		onRelease(pad.buttonB) { $0.onCancel?() }
+		onRelease(pad.buttonY) { $0.onTop?() }
+		onRelease(pad.buttonX) { $0.onLeft?() }
+	}
+
+	/// Fires on release so the press doesn't carry into the stream or the next screen
+	private func onRelease(_ button: GCControllerButtonInput, _ action: @escaping (ListGamepadNavigator) -> Void) {
+		var armed = false
+		button.pressedChangedHandler = { [weak self] _, _, pressed in
 			guard let self else { return }
-			// Fire on release so the press doesn't carry into the stream
 			if pressed {
-				self.confirmArmed = true
-			} else if self.confirmArmed {
-				self.confirmArmed = false
-				self.onConfirm?()
-			}
-		}
-		pad.buttonB.pressedChangedHandler = { [weak self] _, _, pressed in
-			guard let self else { return }
-			if pressed {
-				self.cancelArmed = true
-			} else if self.cancelArmed {
-				self.cancelArmed = false
-				self.onCancel?()
+				armed = true
+			} else if armed {
+				armed = false
+				action(self)
 			}
 		}
 	}
 
-	/// The controller's own symbol for its confirm button when the system can render it
-	private static func confirmSymbol(for controller: GCController) -> String {
-		if let name = controller.extendedGamepad?.buttonA.sfSymbolsName, UIImage(systemName: name) != nil {
-			return name
-		}
-		let pad = controller.extendedGamepad
-		return pad is GCDualSenseGamepad || pad is GCDualShockGamepad ? "xmark.circle" : "a.circle"
-	}
-
-	private static func cancelSymbol(for controller: GCController) -> String {
-		if let name = controller.extendedGamepad?.buttonB.sfSymbolsName, UIImage(systemName: name) != nil {
-			return name
-		}
-		let pad = controller.extendedGamepad
-		return pad is GCDualSenseGamepad || pad is GCDualShockGamepad ? "circle.circle" : "b.circle"
+	/// The controller's own symbol for a button when the system can render it
+	private static func symbol(_ button: GCControllerButtonInput, fallback: String) -> String {
+		if let name = button.sfSymbolsName, UIImage(systemName: name) != nil { return name }
+		return fallback
 	}
 
 	private func detach() {
@@ -113,11 +112,11 @@ final class ListGamepadNavigator {
 			pad.leftThumbstick.valueChangedHandler = nil
 			pad.buttonA.pressedChangedHandler = nil
 			pad.buttonB.pressedChangedHandler = nil
+			pad.buttonX.pressedChangedHandler = nil
+			pad.buttonY.pressedChangedHandler = nil
 			Self.owner = nil
 		}
 		controller = nil
-		confirmArmed = false
-		cancelArmed = false
 		setDirection(nil)
 	}
 
@@ -151,5 +150,36 @@ final class ListGamepadNavigator {
 				self.onMove?(direction)
 			}
 		}
+	}
+}
+
+/// One button and what it does on this screen
+struct GamepadHint: Identifiable {
+	let symbol: String
+	let label: String
+	var id: String { label }
+}
+
+/// What each controller button does here, along the bottom like a console's
+struct GamepadHintBar: View {
+	let hints: [GamepadHint]
+
+	var body: some View {
+		HStack(spacing: 16) {
+			ForEach(hints) { hint in
+				HStack(spacing: 5) {
+					Image(systemName: hint.symbol).imageScale(.large)
+					Text(hint.label)
+				}
+			}
+		}
+		.font(.footnote.weight(.medium))
+		.foregroundStyle(.secondary)
+		.lineLimit(1)
+		.minimumScaleFactor(0.8)
+		.frame(maxWidth: .infinity)
+		.padding(.vertical, 10)
+		.padding(.horizontal, 12)
+		.background(.bar)
 	}
 }

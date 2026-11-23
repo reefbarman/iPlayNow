@@ -56,6 +56,21 @@ struct LibraryView: View {
 		return list
 	}
 
+	private var selectedGame: GFNGame? {
+		shown.first { $0.id == selection }
+	}
+
+	/// What each button does for the selected cover
+	private var gamepadHints: [GamepadHint] {
+		guard let confirm = gamepad.confirmSymbol, let game = selectedGame else { return [] }
+		var hints = [GamepadHint(symbol: confirm, label: "Play")]
+		if let top = gamepad.topSymbol { hints.append(GamepadHint(symbol: top, label: "Video settings")) }
+		if game.ownedVariants.count > 1, let left = gamepad.leftSymbol {
+			hints.append(GamepadHint(symbol: left, label: "Choose store"))
+		}
+		return hints
+	}
+
 	private var gamepadActive: Bool {
 		playing == nil && !showingSettings && choosingStore == nil && editingGame == nil
 	}
@@ -74,6 +89,9 @@ struct LibraryView: View {
 				}
 				.onAppear { updateColumns(width: geo.size.width) }
 				.onChange(of: geo.size.width) { _, width in updateColumns(width: width) }
+			}
+			.safeAreaInset(edge: .bottom) {
+				if !gamepadHints.isEmpty { GamepadHintBar(hints: gamepadHints) }
 			}
 			.searchable(text: $search, placement: .navigationBarDrawer(displayMode: .automatic))
 			.refreshable { await refresh() }
@@ -107,7 +125,13 @@ struct LibraryView: View {
 		.onAppear {
 			gamepad.onMove = { moveSelection($0) }
 			gamepad.onConfirm = {
-				if let game = shown.first(where: { $0.id == selection }) { play(game) }
+				if let game = selectedGame { play(game) }
+			}
+			gamepad.onTop = {
+				if let game = selectedGame { editingGame = game }
+			}
+			gamepad.onLeft = {
+				if let game = selectedGame, game.ownedVariants.count > 1 { choosingStore = game }
 			}
 			gamepad.start()
 			gamepad.setActive(gamepadActive)
@@ -172,6 +196,16 @@ struct LibraryView: View {
 			}
 			.padding(.horizontal, Self.margin)
 			.padding(.bottom, 24)
+			if gamepad.confirmSymbol == nil {
+				// With a controller, the hint bar covers this
+				Text("Press and hold a cover for its video settings, or to choose a store when you own it on more than one.")
+					.font(.footnote)
+					.foregroundStyle(.secondary)
+					.frame(maxWidth: .infinity)
+					.multilineTextAlignment(.center)
+					.padding(.horizontal, Self.margin)
+					.padding(.bottom, 24)
+			}
 			if let error {
 				Text(error)
 					.font(.footnote)
@@ -389,16 +423,27 @@ private struct StoreChoiceView: View {
 	let game: GFNGame
 	let choose: (GFNGameVariant) -> Void
 	@State private var remember = true
+	@State private var gamepad = ListGamepadNavigator()
+	/// The controller's row: a store, or the remember toggle after them
+	@State private var row = 0
 	@Environment(\.dismiss) private var dismiss
+
+	private func highlight(_ index: Int) -> Color? {
+		gamepad.confirmSymbol != nil && row == index ? Color.accentColor.opacity(0.18) : nil
+	}
+
+	private func pick(_ variant: GFNGameVariant) {
+		if remember { StoreChoices.remember(variant, for: game) } else { StoreChoices.forget(game) }
+		choose(variant)
+	}
 
 	var body: some View {
 		NavigationStack {
 			Form {
 				Section {
-					ForEach(game.ownedVariants) { variant in
+					ForEach(Array(game.ownedVariants.enumerated()), id: \.element.id) { index, variant in
 						Button {
-							if remember { StoreChoices.remember(variant, for: game) } else { StoreChoices.forget(game) }
-							choose(variant)
+							pick(variant)
 						} label: {
 							HStack {
 								Text(variant.storeName)
@@ -408,14 +453,16 @@ private struct StoreChoiceView: View {
 								}
 							}
 						}
+						.listRowBackground(highlight(index))
 					}
 				} footer: {
 					Text("You own \(game.title) on more than one store. Your saves stay with the store you play on.")
 				}
 				Section {
 					Toggle("Remember my choice", isOn: $remember)
+						.listRowBackground(highlight(game.ownedVariants.count))
 				} footer: {
-					Text("Press and hold the game's cover to choose again.")
+					Text("Press and hold the game's cover to choose again, or press X on it with a controller.")
 				}
 			}
 			.navigationTitle("Play on")
@@ -423,8 +470,34 @@ private struct StoreChoiceView: View {
 			.toolbar {
 				ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
 			}
+			.safeAreaInset(edge: .bottom) {
+				if let confirm = gamepad.confirmSymbol, let cancel = gamepad.cancelSymbol {
+					GamepadHintBar(hints: [
+						GamepadHint(symbol: "dpad", label: "Move"),
+						GamepadHint(symbol: confirm, label: "Select"),
+						GamepadHint(symbol: cancel, label: "Cancel"),
+					])
+				}
+			}
 		}
 		.presentationDetents([.medium, .large])
+		.onAppear {
+			let stores = game.ownedVariants
+			gamepad.onMove = { move in
+				switch move {
+				case .up: row = max(0, row - 1)
+				case .down: row = min(stores.count, row + 1)
+				case .left, .right: if row == stores.count { remember.toggle() }
+				}
+			}
+			gamepad.onConfirm = {
+				if stores.indices.contains(row) { pick(stores[row]) } else { remember.toggle() }
+			}
+			gamepad.onCancel = { dismiss() }
+			gamepad.start()
+			gamepad.setActive(true)
+		}
+		.onDisappear { gamepad.stop() }
 	}
 }
 

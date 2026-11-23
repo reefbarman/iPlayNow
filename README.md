@@ -16,9 +16,9 @@ Not affiliated with or endorsed by NVIDIA. "GeForce NOW" is a trademark of NVIDI
 The highlights are below. The [changelog](CHANGELOG.md) lists what changed in each release.
 
 - **Native streaming:** GeForce NOW's NVST protocol, hardware H.265/H.264 decoding and Metal drawing at the screen's native resolution. Up to 4K, 120 fps, 100 Mbps and HDR where your membership allows, Fit or Zoom to fill, Sharp or MetalFX upscaling, and a 120 Hz screen on ProMotion iPhones.
-- **Per-game video settings:** press and hold a cover, then **Video settings**, to give a game its own resolution, frame rate, bitrate, codec and HDR.
+- **Per-game video settings:** press and hold a cover, then **Video settings** (or select it with a controller and press **Y**), to give a game its own resolution, frame rate, bitrate, codec and HDR.
 - **Frame generation (experimental):** an in-between frame for each pair the stream sends, so 30 fps looks like 60 and 60 like 120, for half a frame of extra delay.
-- **Your library as covers:** a grid of the games you own, tagged RTX and HDR where GeForce NOW supports them, with search, a store filter, and sorting by recently played or A to Z. It opens instantly from the last list, then refreshes. A controller moves around the grid and A plays.
+- **Your library as covers:** a grid of the games you own, tagged RTX and HDR where GeForce NOW supports them, with search, a store filter, and sorting by recently played or A to Z. It opens instantly from the last list, then refreshes. A controller moves around the grid, and a bar along the bottom shows what each button does: A plays, Y opens the game's video settings and X chooses the store.
 - **Straight into the game:** no tutorials or setup screens. Tap a cover and you're in the queue. Games you own on more than one store ask once which to play, and press and hold changes it later.
 - **Controllers and rumble:** Xbox, PlayStation and MFi controllers, with rumble on the controller, or on the phone when the controller has no motors.
 - **Gyro aiming:** turn the controller (or the phone) to aim with the right stick, always or only while holding LT or RB, tuned to each game's dead zone.

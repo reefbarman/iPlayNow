@@ -309,17 +309,54 @@ private struct VirtualControlsSettingsPage: View {
 
 /// Resolution, frame rate, bitrate, codec and HDR: what to ask GeForce NOW for. A game can have its own.
 struct VideoSettingsSection: View {
+	/// A row a controller can select
+	enum Row: CaseIterable { case resolution, fps, bitrate, codec, hdr }
+
 	@Binding var settings: StreamSettings
 	var customGameName: String?
+	/// The controller's row, nil without a controller
+	var highlighted: Row?
+
+	/// The rows a controller moves through, as shown
+	static func rows(for settings: StreamSettings) -> [Row] {
+		Row.allCases.filter { row in
+			switch row {
+			case .codec: !settings.hdr
+			case .hdr: StreamSettings.screenSupportsHDR || settings.hdr
+			default: true
+			}
+		}
+	}
+
+	/// Left and right step through a row's values; a step of 0 (A) flips codec and HDR
+	static func adjust(_ row: Row, by step: Int, in s: inout StreamSettings) {
+		func stepped<T: Equatable>(_ value: T, in options: [T]) -> T {
+			guard let i = options.firstIndex(of: value) else { return value }
+			return options[min(max(i + step, 0), options.count - 1)]
+		}
+		switch row {
+		case .resolution: s.resolution = stepped(s.resolution, in: StreamResolution.allCases)
+		case .fps: s.fps = stepped(s.fps, in: StreamSettings.fpsOptions)
+		case .bitrate: s.bitrateMbps = min(StreamSettings.maxBitrateMbps, max(5, s.bitrateMbps + step * 5))
+		case .codec: s.codec = s.effectiveCodec == .h265 ? .h264 : .h265
+		case .hdr: s.hdr.toggle()
+		}
+	}
+
+	private func background(_ row: Row) -> Color? {
+		highlighted == row ? Color.accentColor.opacity(0.18) : nil
+	}
 
 	var body: some View {
 		Section {
 			Picker("Resolution", selection: $settings.resolution) {
 				ForEach(StreamResolution.allCases) { Text($0.label).tag($0) }
 			}
+			.listRowBackground(background(.resolution))
 			Picker("Frame rate", selection: $settings.fps) {
 				ForEach(StreamSettings.fpsOptions.reversed(), id: \.self) { Text("\($0) fps").tag($0) }
 			}
+			.listRowBackground(background(.fps))
 			VStack(alignment: .leading) {
 				HStack {
 					Text("Maximum bitrate")
@@ -329,19 +366,22 @@ struct VideoSettingsSection: View {
 				Slider(value: Binding(get: { Double(settings.bitrateMbps) }, set: { settings.bitrateMbps = Int($0) }),
 					in: 5...Double(StreamSettings.maxBitrateMbps), step: 5)
 			}
+			.listRowBackground(background(.bitrate))
 			Picker("Codec", selection: Binding(get: { settings.effectiveCodec }, set: { settings.codec = $0 })) {
 				ForEach(VideoCodecChoice.allCases) { Text($0.label).tag($0) }
 			}
 			.disabled(settings.hdr)
+			.listRowBackground(background(.codec))
 			if StreamSettings.screenSupportsHDR || settings.hdr {
 				Toggle("HDR", isOn: $settings.hdr)
+					.listRowBackground(background(.hdr))
 			}
 		} header: {
 			Text(customGameName.map { "Video for \($0)" } ?? "Video")
 		} footer: {
 			Text("Your membership decides the most GeForce NOW will stream. 1440p, 4K, 120 fps and HDR need Ultimate, and HDR needs H.265 and a game that supports it. These can't change during a game.")
 			if customGameName == nil {
-				Text("To give a game its own video settings, press and hold its cover and tap Video settings.")
+				Text("To give a game its own video settings, press and hold its cover and tap Video settings, or select it with a controller and press Y.")
 			}
 		}
 	}
@@ -375,9 +415,50 @@ struct VideoSettingsSummary: View {
 struct GameSettingsView: View {
 	let game: GFNGame
 
+	/// A row a controller can select
+	enum Row: Hashable {
+		case custom
+		case video(VideoSettingsSection.Row)
+	}
+
 	@Environment(GameSettingsStore.self) private var games
 	@Environment(SettingsStore.self) private var store
 	@Environment(\.dismiss) private var dismiss
+	@State private var gamepad = ListGamepadNavigator()
+	@State private var row = Row.custom
+
+	private var rows: [Row] {
+		guard games.settings(for: game.id) != nil else { return [.custom] }
+		return [.custom] + VideoSettingsSection.rows(for: settings.wrappedValue).map(Row.video)
+	}
+
+	/// The controller's row, nil without a controller
+	private var highlighted: Row? {
+		gamepad.confirmSymbol == nil ? nil : row
+	}
+
+	private var highlightedVideoRow: VideoSettingsSection.Row? {
+		if case .video(let video) = highlighted { video } else { nil }
+	}
+
+	private func move(_ step: Int) {
+		let list = rows
+		let index = list.firstIndex(of: row) ?? 0
+		row = list[min(max(index + step, 0), list.count - 1)]
+	}
+
+	private func change(by step: Int) {
+		switch row {
+		case .custom:
+			custom.wrappedValue.toggle()
+		case .video(let video):
+			var s = settings.wrappedValue
+			VideoSettingsSection.adjust(video, by: step, in: &s)
+			settings.wrappedValue = s
+		}
+		// Turning HDR on hides Codec; turning custom off hides the rest
+		if !rows.contains(row) { row = rows.last ?? .custom }
+	}
 
 	private var custom: Binding<Bool> {
 		Binding(
@@ -400,11 +481,12 @@ struct GameSettingsView: View {
 			Form {
 				Section {
 					Toggle("Custom video settings", isOn: custom)
+						.listRowBackground(highlighted == .custom ? Color.accentColor.opacity(0.18) : nil)
 				} footer: {
 					Text("Give \(game.title) its own resolution, frame rate, bitrate, codec and HDR. Display and controller settings are always shared.")
 				}
 				if games.settings(for: game.id) != nil {
-					VideoSettingsSection(settings: settings, customGameName: game.title)
+					VideoSettingsSection(settings: settings, customGameName: game.title, highlighted: highlightedVideoRow)
 				}
 			}
 			.navigationTitle(game.title)
@@ -412,7 +494,32 @@ struct GameSettingsView: View {
 			.toolbar {
 				ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
 			}
+			.safeAreaInset(edge: .bottom) {
+				if let confirm = gamepad.confirmSymbol, let cancel = gamepad.cancelSymbol {
+					GamepadHintBar(hints: [
+						GamepadHint(symbol: "dpad", label: "Move"),
+						GamepadHint(symbol: "arrow.left.and.right", label: "Change"),
+						GamepadHint(symbol: confirm, label: "Toggle"),
+						GamepadHint(symbol: cancel, label: "Done"),
+					])
+				}
+			}
 		}
+		.onAppear {
+			gamepad.onMove = { direction in
+				switch direction {
+				case .up: move(-1)
+				case .down: move(1)
+				case .left: change(by: -1)
+				case .right: change(by: 1)
+				}
+			}
+			gamepad.onConfirm = { change(by: 0) }
+			gamepad.onCancel = { dismiss() }
+			gamepad.start()
+			gamepad.setActive(true)
+		}
+		.onDisappear { gamepad.stop() }
 	}
 }
 
