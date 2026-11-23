@@ -183,7 +183,8 @@ struct GamepadHintBar: View {
 		.padding(.bottom, max(8, Self.bottomInset - 14))
 		.padding(.horizontal, 12)
 		.background(.bar)
-		.ignoresSafeArea(.container, edges: .bottom)
+		// Centred on the screen, not on the covers, which leave room for the side toolbar
+		.ignoresSafeArea(.container, edges: [.bottom, .horizontal])
 	}
 
 	private static var bottomInset: CGFloat {
