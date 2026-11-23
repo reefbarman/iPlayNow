@@ -113,6 +113,10 @@ struct StreamView: View {
 				.ignoresSafeArea()
 			}
 
+			if session?.state != .streaming {
+				artwork.transition(.opacity)
+			}
+
 			if let session {
 				overlay(for: session)
 			}
@@ -475,6 +479,22 @@ struct StreamView: View {
 				}
 			}
 		}
+	}
+
+	/// The game's artwork behind the launch, queue and error cards
+	private var artwork: some View {
+		Color.black
+			.overlay {
+				AsyncImage(url: game.heroURL ?? game.boxArtURL) { phase in
+					if let image = phase.image {
+						image.resizable().aspectRatio(contentMode: .fill).transition(.opacity)
+					}
+				}
+			}
+			.overlay { Color.black.opacity(0.45) }
+			.clipped()
+			.ignoresSafeArea()
+			.allowsHitTesting(false)
 	}
 
 	private func statusCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {

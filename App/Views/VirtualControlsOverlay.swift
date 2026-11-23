@@ -41,15 +41,24 @@ final class VirtualControlsOverlay: UIView {
 		let action: Action
 		let rounded: Bool
 		let icon: UIImage?
+		/// The face buttons' Xbox colours
+		let tint: UIColor?
 
-		init(_ label: String, _ rect: CGRect, _ action: Action, rounded: Bool = false, icon: UIImage? = nil) {
+		init(_ label: String, _ rect: CGRect, _ action: Action, rounded: Bool = false, icon: UIImage? = nil, tint: UIColor? = nil) {
 			self.label = label
 			self.rect = rect
 			self.action = action
 			self.rounded = rounded
 			self.icon = icon
+			self.tint = tint
 		}
 	}
+
+	/// A green, B red, X blue, Y yellow, a little lighter than the controller so they read on a dark game
+	private static let green = UIColor(red: 0.42, green: 0.80, blue: 0.29, alpha: 1)
+	private static let red = UIColor(red: 0.95, green: 0.27, blue: 0.27, alpha: 1)
+	private static let blue = UIColor(red: 0.25, green: 0.60, blue: 0.98, alpha: 1)
+	private static let yellow = UIColor(red: 0.99, green: 0.80, blue: 0.20, alpha: 1)
 
 	private enum Finger {
 		case button(UInt16), trigger(left: Bool), dpad(UInt16)
@@ -109,8 +118,8 @@ final class VirtualControlsOverlay: UIView {
 		func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat = 44, _ h: CGFloat = 44) -> CGRect {
 			CGRect(x: x - w * s / 2, y: y - h * s / 2, width: w * s, height: h * s)
 		}
-		func button(_ label: String, _ x: CGFloat, _ y: CGFloat, _ bit: UInt16) -> Control {
-			Control(label, rect(x, y), .button(bit))
+		func button(_ label: String, _ x: CGFloat, _ y: CGFloat, _ bit: UInt16, tint: UIColor? = nil) -> Control {
+			Control(label, rect(x, y), .button(bit), tint: tint)
 		}
 		/// The bottom shortcut row stays one size so it fits the letterbox
 		func systemRect(_ x: CGFloat) -> CGRect {
@@ -129,10 +138,10 @@ final class VirtualControlsOverlay: UIView {
 			Control("◀", rect(x - 36 * s, row, 36, 36), .dpad(NVSTGamepad.dpadLeft), rounded: true),
 			Control("▶", rect(x + 36 * s, row, 36, 36), .dpad(NVSTGamepad.dpadRight), rounded: true),
 			Control("▼", rect(x, row + 36 * s, 36, 36), .dpad(NVSTGamepad.dpadDown), rounded: true),
-			button("Y", right, row - 36 * s, NVSTGamepad.y),
-			button("X", right - 36 * s, row, NVSTGamepad.x),
-			button("B", right + 36 * s, row, NVSTGamepad.b),
-			button("A", right, row + 36 * s, NVSTGamepad.a),
+			button("Y", right, row - 36 * s, NVSTGamepad.y, tint: Self.yellow),
+			button("X", right - 36 * s, row, NVSTGamepad.x, tint: Self.blue),
+			button("B", right + 36 * s, row, NVSTGamepad.b, tint: Self.red),
+			button("A", right, row + 36 * s, NVSTGamepad.a, tint: Self.green),
 			button("LS", x + 76 * s, row + 37 * s, NVSTGamepad.leftThumb),
 			button("RS", right - 76 * s, row + 37 * s, NVSTGamepad.rightThumb),
 			Control("View", systemRect(middle - 32), .button(NVSTGamepad.back), rounded: true, icon: Self.viewIcon),
@@ -240,7 +249,7 @@ final class VirtualControlsOverlay: UIView {
 			case .trigger(let left): pressed = (left ? pad.leftTrigger : pad.rightTrigger) != 0
 			}
 			drawControl(control.rect, radius: control.rounded ? 10 : control.rect.height / 2, pressed: pressed,
-				label: control.label, icon: control.icon)
+				label: control.label, icon: control.icon, tint: control.tint)
 		}
 
 		let radius = stickRadius
@@ -266,13 +275,19 @@ final class VirtualControlsOverlay: UIView {
 		}
 	}
 
-	private func drawControl(_ rect: CGRect, radius: CGFloat, pressed: Bool, label: String? = nil, icon: UIImage? = nil) {
+	private func drawControl(_ rect: CGRect, radius: CGFloat, pressed: Bool, label: String? = nil, icon: UIImage? = nil,
+		tint: UIColor? = nil) {
 		// A pressed control stays easy to see however faint the rest are
 		let alpha = pressed ? max(style.opacity, 0.7) : style.opacity
 		let path = UIBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), cornerRadius: radius)
-		(pressed ? UIColor.white.withAlphaComponent(0.42 * alpha) : UIColor.black.withAlphaComponent(0.36 * alpha)).setFill()
+		let fill: UIColor = if let tint {
+			pressed ? tint.withAlphaComponent(0.55 * alpha) : UIColor.black.withAlphaComponent(0.36 * alpha)
+		} else {
+			pressed ? UIColor.white.withAlphaComponent(0.42 * alpha) : UIColor.black.withAlphaComponent(0.36 * alpha)
+		}
+		fill.setFill()
 		path.fill()
-		UIColor.white.withAlphaComponent((pressed ? 0.85 : 0.36) * alpha).setStroke()
+		(tint ?? .white).withAlphaComponent((pressed ? 0.85 : 0.5) * alpha).setStroke()
 		path.lineWidth = 1
 		path.stroke()
 		if let icon {
@@ -282,7 +297,7 @@ final class VirtualControlsOverlay: UIView {
 		guard let label else { return }
 		let attributes: [NSAttributedString.Key: Any] = [
 			.font: UIFont.systemFont(ofSize: (label.count == 1 ? 23 : 12) * style.scale, weight: .semibold),
-			.foregroundColor: UIColor.white.withAlphaComponent(0.9 * alpha),
+			.foregroundColor: (pressed || tint == nil ? UIColor.white : tint!).withAlphaComponent(0.9 * alpha),
 		]
 		let size = label.size(withAttributes: attributes)
 		label.draw(at: CGPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2), withAttributes: attributes)
