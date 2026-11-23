@@ -115,7 +115,7 @@ enum GFNHTTP {
 /// This install's stable device id: SHA-256 hex of a UUID made once.
 enum GFNDevice {
 	static let id: String = {
-		let key = "iplaygfn.deviceId"
+		let key = "iplaynow.deviceId"
 		if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty { return saved }
 		let digest = SHA256.hash(data: Data(UUID().uuidString.utf8))
 		let id = digest.map { String(format: "%02x", $0) }.joined()

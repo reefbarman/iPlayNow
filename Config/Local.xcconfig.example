@@ -4,4 +4,4 @@
 // A free Apple ID works too, but apps then expire after 7 days.
 
 DEVELOPMENT_TEAM = ABCDE12345
-IPLAYGFN_BUNDLE_ID = com.yourname.iplaygfn
+IPLAYNOW_BUNDLE_ID = com.yourname.iplaynow

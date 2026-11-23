@@ -20,9 +20,9 @@ enum GFNConstants {
 	/// NVIDIA's registered redirect is a loopback address; a local listener bounces it to our scheme.
 	static let redirectURI = "http://localhost:2259"
 	static let redirectPort: UInt16 = 2259
-	static let callbackScheme = "iplaygfn"
+	static let callbackScheme = "iplaynow"
 
-	static let keychainService = "dev.reefbarman.iplaygfn.auth"
+	static let keychainService = "dev.reefbarman.iplaynow.auth"
 }
 
 /// A sign-in provider: NVIDIA itself or an alliance partner with its own CloudMatch servers.

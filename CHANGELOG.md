@@ -1,10 +1,10 @@
 # Changelog
 
-Every iPlayGFN release, written for players. The same notes are on each [GitHub release](https://github.com/reefbarman/iPlayGFN/releases).
+Every iPlayNow release, written for players. The same notes are on each [GitHub release](https://github.com/reefbarman/iPlayNow/releases).
 
 ## v0.1.0 (2026-11-24)
 
-The first release of iPlayGFN: a native GeForce NOW player for iPhone and iPad. Sign in, tap one of your games and play it on a GeForce NOW rig, streamed with hardware decoding and Metal instead of a web page. It shares its player, controls and settings with iPlay5, so it's tuned for the iPhone Duo and works on any iPhone or iPad running iOS 17 or later.
+The first release of iPlayNow: a native GeForce NOW player for iPhone and iPad. Sign in, tap one of your games and play it on a GeForce NOW rig, streamed with hardware decoding and Metal instead of a web page. It shares its player, controls and settings with iPlay5, so it's tuned for the iPhone Duo and works on any iPhone or iPad running iOS 17 or later.
 
 ### New
 - **Sign in** with NVIDIA or a regional GeForce NOW partner.
@@ -21,4 +21,4 @@ The first release of iPlayGFN: a native GeForce NOW player for iPhone and iPad. 
 - Only games you own are listed. Link your stores in GeForce NOW itself, then pull to refresh.
 - 4K, HDR and 120 fps need a membership that includes them, and HDR also needs the game to support it. GeForce NOW quietly lowers what you asked for if not.
 - Resolution, frame rate, bitrate, codec and HDR are fixed when a game starts, so change them before launching.
-- Install with SideStore or AltStore using `https://raw.githubusercontent.com/reefbarman/iPlayGFN/main/altstore-source.json`, or download `iPlayGFN.ipa` and use Sideloadly.
+- Install with SideStore or AltStore using `https://raw.githubusercontent.com/reefbarman/iPlayNow/main/altstore-source.json`, or download `iPlayGFN.ipa` (this release's file name, from before the app was renamed) and use Sideloadly.

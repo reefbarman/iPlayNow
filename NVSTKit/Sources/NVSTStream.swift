@@ -4,7 +4,7 @@ import Foundation
 import os
 
 // The public surface of NVSTKit. Everything under Sources/NVST is the vendored OpenNOW receiver;
-// this file is iPlayGFN's adapter around it, forked from OpenNOW iOS `NativeStreamNVST.swift`
+// this file is iPlayNow's adapter around it, forked from OpenNOW iOS `NativeStreamNVST.swift`
 // (MIT) with the app, WebRTC and diagnostics coupling removed.
 
 public enum NVSTCodec: String, Sendable {
@@ -139,8 +139,8 @@ public final class NVSTStream: @unchecked Sendable {
 	private let state = OSAllocatedUnfairLock(initialState: State())
 	private let audio = NVSTAudioRing(capacityFrames: 48_000 * 150 / 1000)
 	private let input = NVSTInputGate()
-	private let audioQueue = DispatchQueue(label: "dev.reefbarman.iplaygfn.nvst.audio", qos: .userInteractive)
-	private let rumbleQueue = DispatchQueue(label: "dev.reefbarman.iplaygfn.nvst.rumble")
+	private let audioQueue = DispatchQueue(label: "dev.reefbarman.iplaynow.nvst.audio", qos: .userInteractive)
+	private let rumbleQueue = DispatchQueue(label: "dev.reefbarman.iplaynow.nvst.rumble")
 	private var audioTimer: DispatchSourceTimer?
 
 	public init(config: NVSTStreamConfig) {
@@ -369,7 +369,7 @@ final class NVSTAudioRing: @unchecked Sendable {
 /// Serialises gamepad packets for pad 0. Holds the latest state until the seat has activated
 /// input, then sends it and every change after.
 final class NVSTInputGate: @unchecked Sendable {
-	private let queue = DispatchQueue(label: "dev.reefbarman.iplaygfn.nvst.input", qos: .userInteractive)
+	private let queue = DispatchQueue(label: "dev.reefbarman.iplaynow.nvst.input", qos: .userInteractive)
 	private var bundle: NvstNativeBundle?
 	private var clock: NvstSessionClock?
 	private var latest = NVSTGamepad()

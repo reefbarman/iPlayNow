@@ -24,7 +24,7 @@ final class ControllerFeedback {
 		}
 	}
 
-	private let queue = DispatchQueue(label: "iPlayGFN.controller-feedback", qos: .userInteractive)
+	private let queue = DispatchQueue(label: "iPlayNow.controller-feedback", qos: .userInteractive)
 
 	// Main thread
 	private var controller: GCController?

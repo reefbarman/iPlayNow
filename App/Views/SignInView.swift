@@ -54,7 +54,7 @@ struct SignInView: View {
 					}
 				}
 			}
-			.navigationTitle("iPlayGFN")
+			.navigationTitle("iPlayNow")
 		}
 		.task { await accounts.loadProviders() }
 	}

@@ -24,7 +24,7 @@ When creating a release:
    ### Notes
    - Migrations, changed defaults, device requirements or anything users should know. Omit if empty.
 
-   **Full Changelog**: https://github.com/reefbarman/iPlayGFN/compare/vPREV...vX.Y.Z
+   **Full Changelog**: https://github.com/reefbarman/iPlayNow/compare/vPREV...vX.Y.Z
    ```
 
    For the first release, leave out the Full Changelog link and describe what the app does.
@@ -39,4 +39,4 @@ Write for players, not developers: describe behaviour, not internals. Leave out 
 
 ## OpenNOW code
 
-Only `NVSTKit/Sources/NVST` comes from OpenNOW. Mark every edit to those files with an `// iPlayGFN:` comment. Nothing in the app's UI should mention OpenNOW.
+Only `NVSTKit/Sources/NVST` comes from OpenNOW. Mark every edit to those files with an `// iPlayNow:` comment. Nothing in the app's UI should mention OpenNOW.

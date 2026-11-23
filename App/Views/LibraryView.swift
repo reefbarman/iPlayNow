@@ -16,9 +16,9 @@ struct LibraryView: View {
 	@State private var selection: String?
 	@State private var columnCount = 2
 	@State private var gamepad = ListGamepadNavigator()
-	@AppStorage("iplaygfn.librarySort") private var sort = LibrarySort.recent
+	@AppStorage("iplaynow.librarySort") private var sort = LibrarySort.recent
 	/// A store name, or empty for every store
-	@AppStorage("iplaygfn.libraryStore") private var storeFilter = ""
+	@AppStorage("iplaynow.libraryStore") private var storeFilter = ""
 
 	/// One launch: the game and which store's copy
 	struct Playing: Identifiable {
@@ -95,7 +95,7 @@ struct LibraryView: View {
 			}
 			.searchable(text: $search, placement: .navigationBarDrawer(displayMode: .automatic))
 			.refreshable { await refresh() }
-			.navigationTitle("iPlayGFN")
+			.navigationTitle("iPlayNow")
 			.toolbar {
 				ToolbarItemGroup(placement: .topBarTrailing) {
 					filterMenu
@@ -503,7 +503,7 @@ private struct StoreChoiceView: View {
 
 /// The store picked for each game owned on several
 enum StoreChoices {
-	private static let key = "iplaygfn.launchStore"
+	private static let key = "iplaynow.launchStore"
 
 	private static var all: [String: String] {
 		UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]

@@ -258,9 +258,9 @@ private final class GFNWebSignIn: NSObject, ASWebAuthenticationPresentationConte
 }
 
 /// NVIDIA redirects to http://localhost:2259. This listener answers that request with a 302 to
-/// `iplaygfn://callback?…`, which ASWebAuthenticationSession is waiting for.
+/// `iplaynow://callback?…`, which ASWebAuthenticationSession is waiting for.
 private final class GFNLoopbackRedirect: @unchecked Sendable {
-	private let queue = DispatchQueue(label: "dev.reefbarman.iplaygfn.signin")
+	private let queue = DispatchQueue(label: "dev.reefbarman.iplaynow.signin")
 	private var listener: NWListener?
 
 	func start() throws {

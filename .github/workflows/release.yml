@@ -36,8 +36,8 @@ jobs:
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
-                  gh release create "$GITHUB_REF_NAME" build/iPlayGFN.ipa --title "iPlayGFN $GITHUB_REF_NAME" --generate-notes \
-                    || gh release upload "$GITHUB_REF_NAME" build/iPlayGFN.ipa --clobber
+                  gh release create "$GITHUB_REF_NAME" build/iPlayNow.ipa --title "iPlayNow $GITHUB_REF_NAME" --generate-notes \
+                    || gh release upload "$GITHUB_REF_NAME" build/iPlayNow.ipa --clobber
 
             - name: Update sideload source
               run: |
@@ -45,8 +45,8 @@ jobs:
                   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
                   git fetch origin main
                   git checkout -B main origin/main
-                  scripts/update-source.sh "${GITHUB_REF_NAME#v}" build/iPlayGFN.ipa \
-                    "https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/iPlayGFN.ipa"
+                  scripts/update-source.sh "${GITHUB_REF_NAME#v}" build/iPlayNow.ipa \
+                    "https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/iPlayNow.ipa"
                   git add altstore-source.json
                   git commit -m "chore: add ${GITHUB_REF_NAME} to sideload source"
                   git push origin main

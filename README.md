@@ -1,8 +1,8 @@
-<p align="center"><img src="App/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="128" alt="iPlayGFN, a GeForce NOW app for iPhone and iPad"></p>
+<p align="center"><img src="App/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="128" alt="iPlayNow, a GeForce NOW app for iPhone and iPad"></p>
 
-# iPlayGFN: GeForce NOW for iPhone and iPad
+# iPlayNow: GeForce NOW for iPhone and iPad
 
-iPlayGFN is a free, open-source GeForce NOW player for iPhone and iPad. Sign in, pick a game you own and play it on a GeForce NOW rig, streamed natively with hardware decoding and Metal rather than through a web page. It shares its player, controls and settings with [iPlay5](https://github.com/reefbarman/iPlay5), my PS5 Remote Play app, so it's tuned for the iPhone Duo's near-square inner screen and works on any iPhone or iPad running iOS 17 or later. Install it by sideloading with AltStore, SideStore or Sideloadly.
+iPlayNow is a free, open-source GeForce NOW player for iPhone and iPad. Sign in, pick a game you own and play it on a GeForce NOW rig, streamed natively with hardware decoding and Metal rather than through a web page. It shares its player, controls and settings with [iPlay5](https://github.com/reefbarman/iPlay5), my PS5 Remote Play app, so it's tuned for the iPhone Duo's near-square inner screen and works on any iPhone or iPad running iOS 17 or later. Install it by sideloading with AltStore, SideStore or Sideloadly.
 
 > [!IMPORTANT]
 > **Play with a physical controller or virtual controls.** Auto keeps the virtual controls out of the way when you have a supported controller connected, such as an Xbox controller, DualSense or Backbone. Change this in Settings › Virtual controls.
@@ -28,21 +28,21 @@ The highlights are below. The [changelog](CHANGELOG.md) lists what changed in ea
 
 ## Install
 
-iPlayGFN isn't on the App Store. You install the `.ipa` from [Releases](https://github.com/reefbarman/iPlayGFN/releases) yourself with a sideloading tool, signed with your own Apple ID. A free Apple ID is enough because the app needs no special permissions. Free-account apps expire after 7 days unless they're refreshed, which SideStore and AltStore do in the background.
+iPlayNow isn't on the App Store. You install the `.ipa` from [Releases](https://github.com/reefbarman/iPlayNow/releases) yourself with a sideloading tool, signed with your own Apple ID. A free Apple ID is enough because the app needs no special permissions. Free-account apps expire after 7 days unless they're refreshed, which SideStore and AltStore do in the background.
 
-**SideStore or AltStore (recommended, gets updates):** add this source, then install iPlayGFN from it:
+**SideStore or AltStore (recommended, gets updates):** add this source, then install iPlayNow from it:
 
 ```
-https://raw.githubusercontent.com/reefbarman/iPlayGFN/main/altstore-source.json
+https://raw.githubusercontent.com/reefbarman/iPlayNow/main/altstore-source.json
 ```
 
-**Sideloadly or another signer:** download `iPlayGFN.ipa` from the latest release and install it as you would any other IPA.
+**Sideloadly or another signer:** download `iPlayNow.ipa` from the latest release and install it as you would any other IPA.
 
 **Developer account:** if you have a paid Apple Developer account, you can build from source (below) and the app lasts a year.
 
 ## Using it
 
-1. Open iPlayGFN and choose your GeForce NOW provider (NVIDIA, or a regional partner). Sign in.
+1. Open iPlayNow and choose your GeForce NOW provider (NVIDIA, or a regional partner). Sign in.
 2. Tap a game's cover. It queues for a rig if needed, sets up, then streams.
 3. While streaming: tap the top-right corner, then the gear, for the menu and settings. Or hold **View + Menu** for a second. Tap the top-left corner, then the Xbox logo, to press the Xbox button (GeForce NOW's in-game menu). Tap the bottom-right corner to turn frame generation on and off.
 4. **Quit game** in the menu ends the session on GeForce NOW, so it doesn't keep running on your account.
@@ -55,15 +55,15 @@ Needs a Mac with Xcode 16 or later and Homebrew.
 
 ```sh
 brew install xcodegen
-git clone https://github.com/reefbarman/iPlayGFN.git
-cd iPlayGFN
+git clone https://github.com/reefbarman/iPlayNow.git
+cd iPlayNow
 scripts/prepare-frameworks.sh                            # -> Frameworks/OpenSSL and usrsctp xcframeworks
 cp Config/Local.xcconfig.example Config/Local.xcconfig  # set your team ID and a bundle ID
-xcodegen generate                                       # -> iPlayGFN.xcodeproj
-open iPlayGFN.xcodeproj                                 # run on your phone
+xcodegen generate                                       # -> iPlayNow.xcodeproj
+open iPlayNow.xcodeproj                                 # run on your phone
 ```
 
-To build the same unsigned IPA the releases use, run `scripts/package-ipa.sh`, which writes `build/iPlayGFN.ipa`. To publish a release, push a `v*` tag. The release workflow builds the IPA, attaches it to a GitHub release and adds it to `altstore-source.json`.
+To build the same unsigned IPA the releases use, run `scripts/package-ipa.sh`, which writes `build/iPlayNow.ipa`. To publish a release, push a `v*` tag. The release workflow builds the IPA, attaches it to a GitHub release and adds it to `altstore-source.json`.
 
 ### Layout
 
@@ -76,12 +76,12 @@ To build the same unsigned IPA the releases use, run `scripts/package-ipa.sh`, w
 | `Vendor/`        | Prebuilt OpenSSL and usrsctp from OpenNOW, unpacked into `Frameworks/` by `scripts/prepare-frameworks.sh` |
 | `Config/`        | Signing settings. Your team and bundle ID go in the git-ignored `Local.xcconfig`                          |
 
-Files under `NVSTKit/Sources/NVST` are OpenNOW's, and every change made to them here is marked with an `// iPlayGFN:` comment, which keeps updates from upstream easy to review. The upstream commit is in `Licenses/OPENNOW_UPSTREAM_COMMIT`.
+Files under `NVSTKit/Sources/NVST` are OpenNOW's, and every change made to them here is marked with an `// iPlayNow:` comment, which keeps updates from upstream easy to review. The upstream commit is in `Licenses/OPENNOW_UPSTREAM_COMMIT`.
 
 ## Credits and license
 
-- [OpenNOW](https://github.com/OpenCloudGaming/OpenNOW) (MIT) worked out GeForce NOW's native NVST streaming protocol. iPlayGFN uses its NVST receiver as the streaming backend; sign-in, library, sessions and every screen are iPlayGFN's own. See `Licenses/OpenNOW-MIT.txt` and `Licenses/OpenNOW-THIRD_PARTY_NOTICES.txt`.
+- [OpenNOW](https://github.com/OpenCloudGaming/OpenNOW) (MIT) worked out GeForce NOW's native NVST streaming protocol. iPlayNow uses its NVST receiver as the streaming backend; sign-in, library, sessions and every screen are iPlayNow's own. See `Licenses/OpenNOW-MIT.txt` and `Licenses/OpenNOW-THIRD_PARTY_NOTICES.txt`.
 - The player, controls and settings come from [iPlay5](https://github.com/reefbarman/iPlay5), which is built on [chiaki-ng](https://github.com/streetpea/chiaki-ng) and the original [Chiaki](https://git.sr.ht/~thestr4ng3r/chiaki).
 - Also bundled: [OpenSSL](https://www.openssl.org) (Apache-2.0) and [usrsctp](https://github.com/sctplab/usrsctp) (BSD), as built by OpenNOW.
 
-iPlayGFN is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only), the same as iPlay5. If you distribute a modified build, you must make its source available under the same license.
+iPlayNow is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only), the same as iPlay5. If you distribute a modified build, you must make its source available under the same license.

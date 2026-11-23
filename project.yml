@@ -1,4 +1,4 @@
-name: iPlayGFN
+name: iPlayNow
 options:
   deploymentTarget:
     iOS: "17.0"
@@ -12,7 +12,7 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
-  iPlayGFN:
+  iPlayNow:
     type: application
     platform: iOS
     sources:
@@ -25,7 +25,7 @@ targets:
       Release: Config/Signing.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: $(IPLAYGFN_BUNDLE_ID)
+        PRODUCT_BUNDLE_IDENTIFIER: $(IPLAYNOW_BUNDLE_ID)
         # iPhone and iPad
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
@@ -44,7 +44,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: iPlayGFN
+        CFBundleDisplayName: iPlayNow
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -67,7 +67,7 @@ targets:
         # Lets ProMotion run above 60 Hz
         CADisableMinimumFrameDurationOnPhone: true
         # NVIDIA's sign-in redirects to http://localhost:2259, which the app catches
-        NSLocalNetworkUsageDescription: iPlayGFN uses a local address to finish signing in to GeForce NOW.
+        NSLocalNetworkUsageDescription: iPlayNow uses a local address to finish signing in to GeForce NOW.
         # Game controllers can drive the UI and Game Mode kicks in while streaming
         GCSupportsControllerUserInteraction: true
         GCSupportsGameMode: true
@@ -75,9 +75,9 @@ targets:
           - ProfileName: ExtendedGamepad
           - ProfileName: DualSense
         CFBundleURLTypes:
-          - CFBundleURLName: dev.reefbarman.iplaygfn.signin
+          - CFBundleURLName: dev.reefbarman.iplaynow.signin
             CFBundleURLSchemes:
-              - iplaygfn
+              - iplaynow
   # GeForce NOW's native NVST streaming protocol, from OpenNOW (MIT). See NVSTKit/README.md.
   NVSTKit:
     type: framework
@@ -97,7 +97,7 @@ targets:
         embed: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.reefbarman.iplaygfn.nvstkit
+        PRODUCT_BUNDLE_IDENTIFIER: dev.reefbarman.iplaynow.nvstkit
         MACH_O_TYPE: staticlib
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES

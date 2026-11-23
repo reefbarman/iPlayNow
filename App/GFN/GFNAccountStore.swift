@@ -10,7 +10,7 @@ final class GFNAccountStore {
 	private(set) var providers: [GFNProvider] = [.nvidia]
 
 	private var refreshing: Task<GFNAccount, Error>?
-	private static let lastProviderKey = "iplaygfn.lastProvider"
+	private static let lastProviderKey = "iplaynow.lastProvider"
 
 	init() {
 		account = Keychain.load()

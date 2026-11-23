@@ -1,11 +1,11 @@
 import SwiftUI
 import os
 
-let logSubsystem = Bundle.main.bundleIdentifier ?? "iplaygfn"
+let logSubsystem = Bundle.main.bundleIdentifier ?? "iplaynow"
 let log = Logger(subsystem: logSubsystem, category: "app")
 
 @main
-struct iPlayGFNApp: App {
+struct iPlayNowApp: App {
 	@UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 	@State private var accounts = GFNAccountStore()
 	@State private var settings = SettingsStore()
