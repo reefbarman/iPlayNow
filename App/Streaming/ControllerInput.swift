@@ -14,6 +14,9 @@ import UIKit
 final class ControllerInput {
 	/// Called on the main thread with the latest pad state.
 	var onPad: ((NVSTGamepad) -> Void)?
+	/// Any thread, whenever motion is read: gyro rad/s and accel g (+1 g up at rest), in the
+	/// same axes as `onGyroAim`, and the sensor's microseconds. For the Controller Test.
+	var onMotion: ((SIMD3<Float>, SIMD3<Float>, UInt32) -> Void)?
 	/// Gyro aiming, on the main thread: gyro rad/s (x right, y up, z towards the player) and the sensor's microseconds
 	var onGyroAim: ((SIMD3<Float>, UInt32) -> Void)?
 	/// View + Menu held for a second
@@ -236,6 +239,7 @@ final class ControllerInput {
 	/// Any thread
 	private func sendMotion(gyro rawGyro: SIMD3<Float>, accel: SIMD3<Float>, timestamp: UInt32) {
 		let gyro = calibration.withLock { $0.update(gyro: rawGyro, accel: accel, timestamp: timestamp) }
+		onMotion?(gyro, accel, timestamp)
 		guard gyroAim.withLock({ $0 }) else { return }
 		if Thread.isMainThread {
 			onGyroAim?(gyro, timestamp)

@@ -2,6 +2,7 @@ import CoreHaptics
 import CoreMotion
 import GameController
 import NVSTKit
+import os
 import simd
 import SwiftUI
 
@@ -45,10 +46,14 @@ final class ControllerTester {
 	/// Why turning the controller can't move anything in a game
 	private(set) var motionUnavailableReason: String?
 	private(set) var rumbleOn = "Controller"
-	/// rad/s: x right, y out of the face, z towards the player
+	/// rad/s and g: x right, y out of the face, z towards the player
 	private(set) var gyro = SIMD3<Float>.zero
-	/// How the controller has turned lately, in the 3D model's axes
-	/// (x right, y towards the triggers, z out of the face). Settles back to front-on.
+	private(set) var accel = SIMD3<Float>.zero
+	/// Set when the accelerometer turned out to use different axes from the gyro: which accelerometer
+	/// axes line up with the gyro's x, y and z
+	private(set) var gravityAxes: String?
+	/// How the controller has turned since it was levelled, in the 3D model's axes
+	/// (x right, y towards the triggers, z out of the face)
 	private(set) var orientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
 	private(set) var buzz: Buzz?
 
@@ -91,10 +96,20 @@ final class ControllerTester {
 	@ObservationIgnored private var originalLight: GCColor?
 	@ObservationIgnored private var originalPlayer = GCControllerPlayerIndex.indexUnset
 	@ObservationIgnored private var changedLights = false
-	// Motion, on the main thread: integrated every sample, shown at most 60 times a second
-	@ObservationIgnored private var attitude = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
-	@ObservationIgnored private var lastTimestamp: UInt32?
-	@ObservationIgnored private var lastShown: CFTimeInterval = 0
+	/// Motion arrives faster than the screen updates: the latest values and turning,
+	/// updated on the motion thread and read once per hop to main
+	@ObservationIgnored private let motion = OSAllocatedUnfairLock(initialState: Motion(naturalUp: ControllerTester.savedNaturalUp))
+
+	/// Which way is up, seen from the controller, when it's held naturally: face tipped towards
+	/// you, about 40° from flat. Recentre replaces it with how you hold yours.
+	static let defaultNaturalUp = SIMD3<Float>(0, cos(40 * .pi / 180), -sin(40 * .pi / 180))
+	private static let naturalUpKey = "ControllerTest.naturalUp"
+
+	private static var savedNaturalUp: SIMD3<Float> {
+		guard let v = UserDefaults.standard.array(forKey: naturalUpKey) as? [Float], v.count == 3 else { return defaultNaturalUp }
+		let up = SIMD3(v[0], v[1], v[2])
+		return simd_length(up) > 0.5 ? simd_normalize(up) : defaultNaturalUp
+	}
 
 	private static let phoneHasMotion = CMMotionManager().isDeviceMotionAvailable
 	private static var deviceNoun: String { DeviceLayout.isPad ? "iPad" : "phone" }
@@ -113,7 +128,16 @@ final class ControllerTester {
 			self.pad = pad
 			if self.input.activeController !== self.lastController { self.refreshController() }
 		}
-		input.onGyroAim = { [weak self] gyro, timestamp in self?.motion(gyro, timestamp: timestamp) }
+		input.onMotion = { [weak self] gyro, accel, timestamp in
+			guard let self else { return }
+			let schedule = self.motion.withLock { m in
+				m.add(gyro: gyro, accel: accel, timestamp: timestamp)
+				defer { m.scheduled = true }
+				return !m.scheduled
+			}
+			guard schedule else { return }
+			DispatchQueue.main.async { [weak self] in self?.motionChanged() }
+		}
 		input.onMenuCombo = { [weak self] in self?.onMenuCombo?() }
 		input.start()
 		refreshController()
@@ -130,7 +154,7 @@ final class ControllerTester {
 		hapticEngines.removeAll()
 		input.stop()
 		input.onPad = nil
-		input.onGyroAim = nil
+		input.onMotion = nil
 		input.onMenuCombo = nil
 	}
 
@@ -174,11 +198,20 @@ final class ControllerTester {
 		triggerPreset = .off
 		watchExtras(controller)
 
-		attitude = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
-		lastTimestamp = nil
-		orientation = attitude
+		// A different controller (or the phone) starts over, level with however it's held,
+		// with the axes matched last time
+		let axes = UserDefaults.standard.object(forKey: axesKey) as? Int
+		motion.withLock { m in
+			m = Motion(naturalUp: m.naturalUp)
+			if let axes, Motion.axisTurns.indices.contains(axes) { m.axes = axes }
+		}
+		gravityAxes = nil
+		orientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
 		gyro = .zero
+		accel = .zero
 	}
+
+	private var axesKey: String { "ControllerTest.gravityAxes.\(controllerName ?? "Phone")" }
 
 	/// Puts the lights and triggers back how they were
 	private func restoreController(_ controller: GCController?) {
@@ -235,32 +268,226 @@ final class ControllerTester {
 
 	// MARK: - Motion
 
-	/// `gyro` in rad/s, x right, y out of the face, z towards the player. Turns the model with it,
-	/// easing back to front-on so it never drifts off (there's no gravity here to keep it level).
-	private func motion(_ gyro: SIMD3<Float>, timestamp: UInt32) {
-		defer { lastTimestamp = timestamp }
-		guard let last = lastTimestamp else { return }
-		let dt = min(0.05, Float(timestamp &- last) / 1_000_000)
-		guard dt > 0 else { return }
-		// Controller (x, y, z) is the model's (x, -z, y): z towards the player is down the model
-		let w = SIMD3(gyro.x, -gyro.z, gyro.y)
-		let rate = simd_length(w)
-		if rate > 0 {
-			attitude = simd_normalize(attitude * simd_quatf(angle: rate * dt, axis: w / rate))
+	private func motionChanged() {
+		let m = motion.withLock { m in
+			m.scheduled = false
+			return m
 		}
-		attitude = simd_slerp(attitude, simd_quatf(ix: 0, iy: 0, iz: 0, r: 1), min(1, dt / 1.5))
-
-		let now = CACurrentMediaTime()
-		guard now - lastShown > 1.0 / 60 else { return }
-		lastShown = now
-		self.gyro = gyro
-		orientation = attitude
+		gyro = m.gyro
+		accel = m.accel
+		orientation = m.shown
+		let description = m.axesDescription
+		if description != gravityAxes {
+			gravityAxes = description
+			UserDefaults.standard.set(m.axes, forKey: axesKey)
+		}
 	}
 
-	/// Shows the controller front-on now, rather than waiting for it to settle
+	/// Shows the way the controller is held now front-on, and remembers it as the natural hold
 	func recentre() {
-		attitude = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
-		orientation = attitude
+		let natural = motion.withLock { $0.recentre() }
+		if let natural {
+			UserDefaults.standard.set([natural.x, natural.y, natural.z], forKey: Self.naturalUpKey)
+		}
+		orientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+	}
+
+	/// Attitude from the gyro, in controller axes: x right, y out of the face, z towards the player.
+	/// - Gravity keeps the tilt honest (a Mahony filter).
+	/// - Turning left and right has nothing to check it against, so it eases back to facing
+	///   front over a few seconds rather than building up.
+	/// - The gyro's small reading at rest is measured while the controller sits still and taken off.
+	/// - Front-on is the natural hold (`naturalUp`), whichever way the controller faced at the start.
+	/// - Controllers don't all report gravity on the same axes as their gyro (and a mismatch stops
+	///   gravity levelling anything), so it works out which axes match from how the controller turns.
+	private struct Motion {
+		var naturalUp: SIMD3<Float>
+		/// Index into `axisTurns` that puts the accelerometer into the gyro's axes
+		var axes = Motion.identityAxes
+		var gyro = SIMD3<Float>.zero
+		var accel = SIMD3<Float>(0, 1, 0)
+		/// Controller to world; the world is how the controller sat at the first sample
+		var attitude = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+		/// Which way is up in that world
+		var up: SIMD3<Float>?
+		/// The attitude shown front-on
+		var level = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+		/// Seconds until front-on is set, nil once done
+		var levelIn: Float? = 0.5
+		/// What the gyro reads at rest
+		var bias = SIMD3<Float>.zero
+		/// Recent averages, to tell when the controller is sitting still
+		var gyroMean: SIMD3<Float>?
+		var accelMean = SIMD3<Float>.zero
+		var stillFor: Float = 0
+		var lastTimestamp: UInt32?
+		var scheduled = false
+
+		// Matching the accelerometer's axes to the gyro's: where gravity should be by now, for
+		// each way the axes could line up, turned along with the gyro and checked every quarter second
+		var predicted: [SIMD3<Float>]?
+		var windowLeft: Float = 0.25
+		var turnedInWindow: Float = 0
+		var mismatch = [Float](repeating: 0, count: Motion.axisTurns.count)
+		var checks = 0
+
+		/// The 24 ways to line up three axes (each axis swapped with another and/or flipped, without mirroring)
+		static let axisTurns: [simd_float3x3] = {
+			var turns: [simd_float3x3] = []
+			for p in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+				for signs in [[1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1]] {
+					var m = simd_float3x3(0)
+					// Output axis i is input axis p[i], times signs[i] (columns are inputs)
+					for i in 0..<3 { m[p[i]][i] = Float(signs[i]) }
+					if simd_determinant(m) > 0 { turns.append(m) }
+				}
+			}
+			return turns
+		}()
+		static let identityAxes = axisTurns.firstIndex(of: matrix_identity_float3x3) ?? 0
+
+		/// How the axes are matched up, for showing: where the gyro's x, y and z come from
+		var axesDescription: String? {
+			guard axes != Self.identityAxes else { return nil }
+			let m = Self.axisTurns[axes]
+			return (0..<3).map { i in
+				let from = (0..<3).first { m[$0][i] != 0 } ?? i
+				return (m[from][i] < 0 ? "−" : "+") + ["X", "Y", "Z"][from]
+			}.joined(separator: " ")
+		}
+
+		mutating func add(gyro: SIMD3<Float>, accel rawAccel: SIMD3<Float>, timestamp: UInt32) {
+			self.gyro = gyro
+			self.accel = rawAccel
+			defer { lastTimestamp = timestamp }
+			let accel = Self.axisTurns[axes] * rawAccel
+			let g = simd_length(accel)
+			if up == nil {
+				guard g > 0.5 else { return }
+				up = accel / g
+			}
+			guard let last = lastTimestamp, up != nil else { return }
+			let dt = min(0.05, Float(timestamp &- last) / 1_000_000)
+			guard dt > 0 else { return }
+			let axesBefore = axes
+			matchAxes(rawAccel, rate: gyro - bias, dt: dt)
+			// Just rematched: carry on in the new axes from the next reading
+			guard axes == axesBefore, let up else { return }
+
+			let k = min(1, dt / 0.2)
+			if let mean = gyroMean {
+				let steady = simd_length(gyro - mean) < 0.02 && simd_length(accel - accelMean) < 0.02
+					// A slow turn isn't the resting reading
+					&& simd_length(mean - bias) < 0.05
+				stillFor = steady ? stillFor + dt : 0
+				gyroMean = mean + (gyro - mean) * k
+				accelMean += (accel - accelMean) * k
+			} else {
+				gyroMean = gyro
+				accelMean = accel
+			}
+			if stillFor > 0.5, let mean = gyroMean {
+				bias += (mean - bias) * min(1, dt / 2)
+			}
+
+			var w = gyro - bias
+			if g > 0.85 && g < 1.15 {
+				w += 2 * simd_cross(accel / g, attitude.inverse.act(up))
+			}
+			let rate = simd_length(w)
+			if rate > 0 {
+				attitude = simd_normalize(attitude * simd_quatf(angle: rate * dt, axis: w / rate))
+			}
+
+			if let wait = levelIn {
+				levelIn = wait - dt > 0 ? wait - dt : nil
+				if levelIn == nil {
+					// Held: that's the natural hold. Resting on something: assume the usual one.
+					setLevel(natural: stillFor > 0.3 ? naturalUp : attitude.inverse.act(up))
+				}
+			} else {
+				// Ease the heading back to front-on, measured by where the right-hand side points
+				let side = SIMD3<Float>(1, 0, 0)
+				let was = level.act(side) - simd_dot(level.act(side), up) * up
+				let now = attitude.act(side) - simd_dot(attitude.act(side), up) * up
+				if simd_length(was) > 0.3, simd_length(now) > 0.3 {
+					let turned = atan2(simd_dot(simd_cross(was, now), up), simd_dot(was, now))
+					attitude = simd_normalize(simd_quatf(angle: -turned * min(1, dt / 3), axis: up) * attitude)
+				}
+			}
+		}
+
+		/// Turns each candidate gravity with the gyro, and every quarter second scores how far
+		/// each ended up from what the accelerometer then reads. The right axes stay close.
+		mutating func matchAxes(_ rawAccel: SIMD3<Float>, rate w: SIMD3<Float>, dt: Float) {
+			let g = simd_length(rawAccel)
+			// Swinging it about adds acceleration that isn't gravity: start the window again
+			guard g > 0.75 && g < 1.25 else {
+				predicted = nil
+				return
+			}
+			let measured = Self.axisTurns.map { simd_normalize($0 * rawAccel) }
+			guard var p = predicted else {
+				predicted = measured
+				windowLeft = 0.25
+				turnedInWindow = 0
+				return
+			}
+			for i in p.indices { p[i] = simd_normalize(p[i] + simd_cross(p[i], w) * dt) }
+			predicted = p
+			turnedInWindow += simd_length(w) * dt
+			windowLeft -= dt
+			guard windowLeft <= 0 else { return }
+			// Only turning tells the candidates apart
+			if turnedInWindow > 0.25 {
+				for i in mismatch.indices {
+					mismatch[i] = mismatch[i] * 0.85 + simd_length_squared(measured[i] - p[i])
+				}
+				checks += 1
+				let best = mismatch.indices.min { mismatch[$0] < mismatch[$1] } ?? axes
+				if checks >= 4, best != axes, mismatch[best] < 0.35 * mismatch[axes] {
+					axes = best
+					// Start over in the new axes, front-on at the natural hold
+					let a = Self.axisTurns[axes] * rawAccel
+					attitude = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+					up = simd_normalize(a)
+					setLevel(natural: naturalUp)
+				}
+			}
+			predicted = measured
+			windowLeft = 0.25
+			turnedInWindow = 0
+		}
+
+		/// Front-on is the attitude now, tipped so that holding the controller with `natural`
+		/// pointing up shows square to the screen
+		mutating func setLevel(natural: SIMD3<Float>) {
+			guard let up else {
+				level = attitude
+				return
+			}
+			let upNow = attitude.inverse.act(up)
+			level = attitude * simd_quatf(from: simd_normalize(natural), to: upNow)
+		}
+
+		/// The way it's held now becomes the natural hold
+		mutating func recentre() -> SIMD3<Float>? {
+			levelIn = nil
+			guard let up else {
+				level = attitude
+				return nil
+			}
+			naturalUp = attitude.inverse.act(up)
+			level = attitude
+			return naturalUp
+		}
+
+		/// The turn since levelling, moved into the 3D model's axes
+		var shown: simd_quatf {
+			let q = level.inverse * attitude
+			// Controller (x, y, z) is the model's (x, -z, y) turned: z towards the player is down the model
+			return simd_quatf(ix: q.imag.x, iy: -q.imag.z, iz: q.imag.y, r: q.real)
+		}
 	}
 
 	// MARK: - Touchpad on screen
@@ -539,6 +766,9 @@ struct ControllerTestView: View {
 					AxisRow(label: "Pitch", value: tester.gyro.x * 180 / .pi, range: 360, format: "%+.0f°/s")
 					AxisRow(label: "Yaw", value: tester.gyro.y * 180 / .pi, range: 360, format: "%+.0f°/s")
 					AxisRow(label: "Roll", value: tester.gyro.z * 180 / .pi, range: 360, format: "%+.0f°/s")
+					AxisRow(label: "Accel X", value: tester.accel.x, range: 2, format: "%+.2f g")
+					AxisRow(label: "Accel Y", value: tester.accel.y, range: 2, format: "%+.2f g")
+					AxisRow(label: "Accel Z", value: tester.accel.z, range: 2, format: "%+.2f g")
 				} else {
 					Text(tester.motionUnavailableReason ?? "No motion sensors to read.")
 						.foregroundStyle(.secondary)
@@ -547,7 +777,11 @@ struct ControllerTestView: View {
 				Text("Motion: \(tester.motionSource ?? "none")")
 			} footer: {
 				if tester.motionSource != nil {
-					Text("This is the motion gyro aiming uses. Held still, it should read near zero. The controller on screen turns as you turn yours and settles back to facing you, or tap Recentre to face it straight away.")
+					Text("This is the motion gyro aiming uses. Held still and flat, the gyro should read near zero and Accel Y about +1 g.")
+					Text("The controller on screen turns as you turn yours. Hold it the way you normally do and tap Recentre to show that front-on; it's remembered for next time.")
+					if let axes = tester.gravityAxes {
+						Text("This controller reports gravity on different axes from its gyro. Matched up by how it turns: \(axes).")
+					}
 				}
 			}
 
