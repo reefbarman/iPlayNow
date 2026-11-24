@@ -33,6 +33,8 @@ struct StreamView: View {
 	@State private var menuNavigation = SettingsNavigation()
 	/// A controller quits with a second press of A
 	@State private var quitArmed = false
+	/// The iPhone keyboard is up, typing into the game
+	@State private var showKeyboard = false
 
 	/// The shared settings with this game's own video settings on top
 	private var settings: StreamSettings { settingsStore.settings.applying(gameSettings.settings(for: game.id)) }
@@ -95,6 +97,10 @@ struct StreamView: View {
 			if phase == .active { refreshControllerPresence() } else { session?.setPaused(true) }
 		}
 		.sheet(isPresented: $showMenu) { menu }
+		.onChange(of: acceptsScreenInput) { _, accepts in
+			// Folding, backgrounding, the menu or the stream ending puts the keyboard away
+			if !accepts { showKeyboard = false }
+		}
 		.onChange(of: showMenu) { _, open in
 			session?.setInputHeld(open)
 			if !open {
@@ -147,6 +153,14 @@ struct StreamView: View {
 
 			if showGuideButton && acceptsScreenInput {
 				guideButton.transition(.opacity)
+			}
+
+			if let session {
+				StreamKeyboard(isPresented: $showKeyboard,
+					onText: { [weak session] in session?.typeText($0) },
+					onKey: { [weak session] in session?.pressKey($0) })
+					.frame(width: 1, height: 1)
+					.allowsHitTesting(false)
 			}
 
 			if acceptsScreenInput {
@@ -247,23 +261,45 @@ struct StreamView: View {
 		}
 	}
 
-	/// The Xbox button, which opens GeForce NOW's own in-game menu
+	/// The Xbox button, which opens GeForce NOW's own in-game menu, and the keyboard
 	private var guideButton: some View {
-		Button {
-			session?.pressGuideButton()
-			scheduleGuideButtonHide()
-		} label: {
-			Image(systemName: "xbox.logo")
-				.font(.title2)
-				.foregroundStyle(.white)
-				.frame(width: 52, height: 52)
-				.background(.black.opacity(0.55), in: Circle())
+		HStack(spacing: 12) {
+			Button {
+				session?.pressGuideButton()
+				scheduleGuideButtonHide()
+			} label: {
+				cornerIcon("xbox.logo")
+			}
+			.accessibilityLabel("Xbox button")
+			Button {
+				showKeyboard.toggle()
+				scheduleGuideButtonHide()
+			} label: {
+				cornerIcon(showKeyboard ? "keyboard.chevron.compact.down" : "keyboard")
+			}
+			.accessibilityLabel(showKeyboard ? "Hide keyboard" : "Type with the keyboard")
 		}
-		.accessibilityLabel("Xbox button")
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 		.padding(.top, 14)
 		.padding(.leading, 20)
 		.ignoresSafeArea()
+	}
+
+	private func cornerIcon(_ systemName: String) -> some View {
+		Image(systemName: systemName)
+			.font(.title2)
+			.foregroundStyle(.white)
+			.frame(width: 52, height: 52)
+			.background(.black.opacity(0.55), in: Circle())
+	}
+
+	/// From the menu: wait for the sheet to go, or it takes the keyboard with it
+	private func openKeyboardFromMenu() {
+		showMenu = false
+		Task { @MainActor in
+			try? await Task.sleep(for: .milliseconds(500))
+			if acceptsScreenInput { showKeyboard = true }
+		}
 	}
 
 	private var menuButton: some View {
@@ -295,8 +331,8 @@ struct StreamView: View {
 
 	private var settingsHint: some View {
 		ViewThatFits(in: .horizontal) {
-			settingsHintRow(guide: "Tap this corner for the Xbox button", settings: "Tap this corner for settings")
-			settingsHintRow(guide: "Xbox button", settings: "Settings")
+			settingsHintRow(guide: "Tap this corner for the Xbox button and keyboard", settings: "Tap this corner for settings")
+			settingsHintRow(guide: "Xbox button, keyboard", settings: "Settings")
 		}
 		.foregroundStyle(.white)
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -565,6 +601,7 @@ struct StreamView: View {
 	private var menuRows: [GamepadRow] {
 		[
 			GamepadRow(id: "resume", confirmLabel: "Resume", activate: { showMenu = false }),
+			GamepadRow(id: "keyboard", confirmLabel: "Open", activate: openKeyboardFromMenu),
 			GamepadRow(id: "quit", confirmLabel: quitArmed ? "Confirm quit" : "Quit", activate: {
 				if quitArmed { quit() } else { quitArmed = true }
 			}),
@@ -578,6 +615,8 @@ struct StreamView: View {
 				Section {
 					Button("Resume") { showMenu = false }
 						.gamepadRow("resume")
+					Button("Type with the keyboard", action: openKeyboardFromMenu)
+						.gamepadRow("keyboard")
 					Button(quitArmed ? "Press again to quit" : "Quit game", role: .destructive, action: quit)
 						.gamepadRow("quit")
 				} footer: {

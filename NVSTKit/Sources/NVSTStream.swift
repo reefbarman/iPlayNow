@@ -206,6 +206,20 @@ public final class NVSTStream: @unchecked Sendable {
 		input.sendRemote(NvstRemoteInput.mouseMove(deltaX: Int16(clamping: dx), deltaY: Int16(clamping: dy)))
 	}
 
+	/// Any thread. Types text as Unicode, so any language and capitals work whatever the rig's
+	/// keyboard layout. Dropped until input activates.
+	public func sendText(_ text: String) {
+		guard !text.isEmpty else { return }
+		for packet in NvstRemoteInput.utf8TextPackets(forText: text).packets { input.sendRemote(packet) }
+	}
+
+	/// Any thread. Presses and lets go of a key, by Windows virtual-key code (e.g. 0x0D Return,
+	/// 0x08 Backspace). Dropped until input activates.
+	public func sendKey(virtualKey: UInt16, modifiers: UInt16 = 0) {
+		input.sendRemote(NvstRemoteInput.keyboard(virtualKey: virtualKey, modifiers: modifiers, isPressed: true))
+		input.sendRemote(NvstRemoteInput.keyboard(virtualKey: virtualKey, modifiers: modifiers, isPressed: false))
+	}
+
 	/// Any thread. Dropped until input activates; held buttons are let go on `stop()`.
 	public func sendMouseButton(_ button: NVSTMouseButton, pressed: Bool) {
 		input.sendMouseButton(button, pressed: pressed)

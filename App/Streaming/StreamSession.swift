@@ -364,6 +364,17 @@ final class StreamSession {
 		mouseRemainder = .zero
 	}
 
+	/// Typed on the iPhone keyboard: sent as it's typed, so it works in any text box
+	func typeText(_ text: String) {
+		guard let stream, !inputHeld else { return }
+		stream.sendText(text)
+	}
+
+	func pressKey(_ key: StreamKey) {
+		guard let stream, !inputHeld else { return }
+		stream.sendKey(virtualKey: key.rawValue)
+	}
+
 	/// The touchscreen as a mouse. Positions are in the stream's own resolution.
 	func sendMouse(_ event: TouchMouse.Event) {
 		guard let stream, !inputHeld else { return }
