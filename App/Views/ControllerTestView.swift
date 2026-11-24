@@ -257,6 +257,12 @@ final class ControllerTester {
 		orientation = attitude
 	}
 
+	/// Shows the controller front-on now, rather than waiting for it to settle
+	func recentre() {
+		attitude = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+		orientation = attitude
+	}
+
 	// MARK: - Touchpad on screen
 
 	func screenTouch(_ event: ControllerSceneView.PadTouch) {
@@ -493,6 +499,14 @@ struct ControllerTestView: View {
 		ControllerSceneView(model: style.isPlayStation ? .dualSense : .xbox, state: sceneState,
 			onTouch: { tester.screenTouch($0) })
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
+			.overlay(alignment: .bottomTrailing) {
+				if tester.motionSource != nil {
+					Button("Recentre", systemImage: "scope") { tester.recentre() }
+						.buttonStyle(.bordered)
+						.controlSize(.small)
+						.padding(12)
+				}
+			}
 			.accessibilityLabel("Controller, showing what's pressed. Drag to turn it.")
 	}
 
@@ -533,7 +547,7 @@ struct ControllerTestView: View {
 				Text("Motion: \(tester.motionSource ?? "none")")
 			} footer: {
 				if tester.motionSource != nil {
-					Text("This is the motion gyro aiming uses. Held still, it should read near zero. The controller on screen turns as you turn yours and settles back to facing you.")
+					Text("This is the motion gyro aiming uses. Held still, it should read near zero. The controller on screen turns as you turn yours and settles back to facing you, or tap Recentre to face it straight away.")
 				}
 			}
 
