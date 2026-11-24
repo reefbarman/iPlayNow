@@ -11,6 +11,8 @@ settings:
     # Release builds can override these from a git tag
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+    # The git ref Settings › About links the source to (AGPL); release builds pass their tag
+    IPLAYNOW_SOURCE_REF: main
 targets:
   iPlayNow:
     type: application
@@ -47,6 +49,7 @@ targets:
         CFBundleDisplayName: iPlayNow
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        IPlayNowSourceRef: $(IPLAYNOW_SOURCE_REF)
         LSRequiresIPhoneOS: true
         LSApplicationCategoryType: public.app-category.games
         UILaunchScreen: {}

@@ -39,4 +39,4 @@ Write for players, not developers: describe behaviour, not internals. Leave out 
 
 ## OpenNOW code
 
-Only `NVSTKit/Sources/NVST` comes from OpenNOW. Mark every edit to those files with an `// iPlayNow:` comment. Nothing in the app's UI should mention OpenNOW.
+Only `NVSTKit/Sources/NVST` comes from OpenNOW. Mark every edit to those files with an `// iPlayNow:` comment. Nothing in the app's UI should mention OpenNOW, except the licence notices under Settings › Licences, which its MIT licence requires.

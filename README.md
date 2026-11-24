@@ -31,6 +31,8 @@ The highlights are below. The [changelog](CHANGELOG.md) lists what changed in ea
 - **Reconnects after a dropout:** if the connection drops mid-game, the app gets the same rig back from GeForce NOW, so your game is still where you left it. It tries three times, then offers **Reconnect** on the screen that follows. Closing that screen ends the session.
 - **Made for the iPhone Duo:** the game waits on the outer screen until you unfold, plays on the inner one, and folding pauses it.
 - **Handy extras:** battery and temperature in the stream menu, a warning when the phone gets hot, and stats along the top of the picture.
+- **Reporting problems:** Settings › Share diagnostics makes a text report with your phone model, screen, settings and the app's logs since it was opened, ready to attach to a GitHub issue (Settings › Report a problem on GitHub). IP addresses, IDs, sign-in tokens and your account's name and email are removed first. Share it before closing the app, so the logs still cover the problem.
+- **About:** Settings › About shows the version, links to the exact source code the build came from, and lists the licences of everything bundled into the app.
 
 ## Install
 

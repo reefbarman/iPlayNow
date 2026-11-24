@@ -36,7 +36,7 @@ struct StreamSettingsForm: View {
 
 /// A settings page under the main list. Pushed by value, so a controller can open one too.
 enum SettingsPage: Hashable {
-	case display, controller, gyroAim, virtualControls, audio
+	case display, controller, gyroAim, virtualControls, audio, licences
 
 	var rowID: String { "page.\(self)" }
 }
@@ -61,6 +61,7 @@ extension View {
 				case .gyroAim: GyroAimSettingsPage(settings: settings)
 				case .virtualControls: VirtualControlsSettingsPage(settings: settings)
 				case .audio: AudioSettingsPage(settings: settings)
+				case .licences: LicensesView().gamepadPage(.licences, [])
 				}
 			}
 			.environment(navigation)
@@ -648,6 +649,10 @@ struct SettingsView: View {
 	/// A controller signs out with a second press instead of the dialog
 	@State private var signOutArmed = false
 	@State private var navigation = SettingsNavigation()
+	@State private var isPreparingDiagnostics = false
+	@State private var diagnosticsShare: DiagnosticsShare?
+	@State private var showDiagnosticsError = false
+	@Environment(\.openURL) private var openURL
 
 	private func signOut() {
 		accounts.signOut()
@@ -662,7 +667,30 @@ struct SettingsView: View {
 				if signOutArmed { signOut() } else { signOutArmed = true }
 			}))
 		}
-		return rows + StreamSettingsForm.gamepadRows(settingsBinding) { navigation.open($0) }
+		return rows + StreamSettingsForm.gamepadRows(settingsBinding) { navigation.open($0) } + [
+			GamepadRow(id: "help.diagnostics", confirmLabel: "Share", activate: { isPreparingDiagnostics = true }),
+			GamepadRow(id: "help.report", confirmLabel: "Open", activate: { openURL(AppInfo.newIssue) }),
+			GamepadRow(id: "about.source", confirmLabel: "Open", activate: { openURL(AppInfo.sourceURL) }),
+			GamepadRow.link(SettingsPage.licences.rowID) { navigation.open(.licences) },
+		]
+	}
+
+	private func prepareDiagnostics() async {
+		let account = accounts.account
+		let report = DiagnosticsReport(
+			settings: store.settings,
+			membership: account?.tierName,
+			provider: account?.provider.displayName,
+			privateText: [account?.displayName, account?.email].compactMap { $0 })
+		do {
+			let url = try await report.writeFile()
+			guard !Task.isCancelled else { return }
+			diagnosticsShare = DiagnosticsShare(url: url)
+		} catch {
+			guard !Task.isCancelled else { return }
+			showDiagnosticsError = true
+		}
+		isPreparingDiagnostics = false
 	}
 
 	private var settingsBinding: Binding<StreamSettings> {
@@ -691,6 +719,30 @@ struct SettingsView: View {
 				}
 
 				StreamSettingsForm(settings: settingsBinding)
+
+				Section {
+					Button {
+						isPreparingDiagnostics = true
+					} label: {
+						if isPreparingDiagnostics {
+							ProgressView("Preparing diagnostics…")
+						} else {
+							Label("Share diagnostics", systemImage: "ladybug")
+						}
+					}
+					.disabled(isPreparingDiagnostics || diagnosticsShare != nil)
+					.gamepadRow("help.diagnostics")
+					Link(destination: AppInfo.newIssue) {
+						Label("Report a problem on GitHub", systemImage: "exclamationmark.bubble")
+					}
+					.gamepadRow("help.report")
+				} header: {
+					Text("Help")
+				} footer: {
+					Text("The report has your phone model, screen details, settings and the app's logs since it was opened. IP addresses, IDs, sign-in tokens and your account's name and email are removed. Share it before closing the app, so the logs still cover the problem.")
+				}
+
+				AboutSection()
 			}
 			.navigationTitle("Settings")
 			.navigationBarTitleDisplayMode(.inline)
@@ -708,6 +760,29 @@ struct SettingsView: View {
 			.confirmationDialog("Sign out of GeForce NOW?", isPresented: $confirmSignOut, titleVisibility: .visible) {
 				Button("Sign out", role: .destructive, action: signOut)
 			}
+			.task(id: isPreparingDiagnostics) {
+				guard isPreparingDiagnostics else { return }
+				await prepareDiagnostics()
+			}
+			.sheet(item: $diagnosticsShare) { share in
+				share
+			}
+			.alert("Couldn't prepare diagnostics", isPresented: $showDiagnosticsError) {
+				Button("OK", role: .cancel) {}
+			} message: {
+				Text("Try sharing diagnostics again.")
+			}
 		}
 	}
+}
+
+private struct DiagnosticsShare: UIViewControllerRepresentable, Identifiable {
+	let url: URL
+	var id: URL { url }
+
+	func makeUIViewController(context: Context) -> UIActivityViewController {
+		UIActivityViewController(activityItems: [url], applicationActivities: nil)
+	}
+
+	func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

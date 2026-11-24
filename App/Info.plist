@@ -48,6 +48,8 @@
 	<true/>
 	<key>GCSupportsGameMode</key>
 	<true/>
+	<key>IPlayNowSourceRef</key>
+	<string>$(IPLAYNOW_SOURCE_REF)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.games</string>
 	<key>LSRequiresIPhoneOS</key>
