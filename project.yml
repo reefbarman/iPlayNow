@@ -52,6 +52,7 @@ targets:
         IPlayNowSourceRef: $(IPLAYNOW_SOURCE_REF)
         LSRequiresIPhoneOS: true
         LSApplicationCategoryType: public.app-category.games
+        NSPhotoLibraryAddUsageDescription: Screenshots you take from the stream menu are saved to your photo library.
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

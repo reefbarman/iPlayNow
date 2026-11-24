@@ -58,6 +58,8 @@
 	<string>iPlayNow uses a local address to finish signing in to GeForce NOW.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>iPlayNow sends your voice to the game for game and party chat when Microphone is on in settings.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Screenshots you take from the stream menu are saved to your photo library.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
