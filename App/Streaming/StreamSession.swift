@@ -63,6 +63,9 @@ final class StreamSession {
 	@ObservationIgnored private var gyroStick = GyroStick()
 	/// Where gyro aiming is pushing the right stick, on top of the sticks themselves
 	@ObservationIgnored private var gyroStickPosition = SIMD2<Float>.zero
+	/// Mouse buttons the touchscreen is holding down, and the trackpad's sub-pixel leftovers
+	@ObservationIgnored private var heldMouseButtons: Set<NVSTMouseButton> = []
+	@ObservationIgnored private var mouseRemainder = CGVector.zero
 	@ObservationIgnored private var lastStats: NVSTStats?
 	@ObservationIgnored private var lastStatsTime: CFTimeInterval = 0
 	@ObservationIgnored private var lastGenerated = 0
@@ -206,6 +209,8 @@ final class StreamSession {
 		gyroStick.reset()
 		guideRelease?.cancel()
 		guideRelease = nil
+		heldMouseButtons.removeAll()
+		mouseRemainder = .zero
 		audio.stop()
 		stream?.stop()
 		stream = nil
@@ -354,6 +359,33 @@ final class StreamSession {
 		guideRelease?.cancel()
 		guideRelease = nil
 		if hadButtons { sendPad() }
+		for button in heldMouseButtons { stream?.sendMouseButton(button, pressed: false) }
+		heldMouseButtons.removeAll()
+		mouseRemainder = .zero
+	}
+
+	/// The touchscreen as a mouse. Positions are in the stream's own resolution.
+	func sendMouse(_ event: TouchMouse.Event) {
+		guard let stream, !inputHeld else { return }
+		let size = streamSettings.resolution.size
+		switch event {
+		case .move(let point):
+			stream.sendMouseMove(x: Int((point.x * CGFloat(size.width)).rounded()),
+				y: Int((point.y * CGFloat(size.height)).rounded()), width: size.width, height: size.height)
+		case .moveBy(let fraction):
+			mouseRemainder.dx += fraction.dx * CGFloat(size.width)
+			mouseRemainder.dy += fraction.dy * CGFloat(size.height)
+			let dx = mouseRemainder.dx.rounded(.towardZero), dy = mouseRemainder.dy.rounded(.towardZero)
+			guard dx != 0 || dy != 0 else { return }
+			mouseRemainder.dx -= dx
+			mouseRemainder.dy -= dy
+			stream.sendMouseMove(dx: Int(dx), dy: Int(dy))
+		case .button(let button, let pressed):
+			if pressed { heldMouseButtons.insert(button) } else { heldMouseButtons.remove(button) }
+			stream.sendMouseButton(button, pressed: pressed)
+		case .wheel(let delta):
+			stream.sendMouseWheel(delta)
+		}
 	}
 
 	/// On-screen Xbox button, for controllers whose home button iOS keeps for itself

@@ -198,6 +198,9 @@ struct StreamSettings: Codable, Equatable {
 	var controlsOpacity: Double = 1
 	/// Sticks stay put in their own spots instead of starting wherever a thumb lands
 	var fixedSticks: Bool = false
+	/// Touches on the picture work as a mouse: one-to-one with a controller, a trackpad in the
+	/// top half with virtual controls
+	var touchMouse: Bool = true
 	/// Keep a ProMotion screen at 120 Hz while streaming, so frames wait less for the next refresh
 	var highRefreshDisplay: Bool = true
 	/// Experimental: make an in-between frame for each pair of real ones (FrameGen.metal)
@@ -259,6 +262,7 @@ struct StreamSettings: Codable, Equatable {
 		controlsSize = (try? c.decodeIfPresent(ControlsSize.self, forKey: .controlsSize)) ?? d.controlsSize
 		controlsOpacity = min(1, max(0.2, try c.decodeIfPresent(Double.self, forKey: .controlsOpacity) ?? d.controlsOpacity))
 		fixedSticks = try c.decodeIfPresent(Bool.self, forKey: .fixedSticks) ?? d.fixedSticks
+		touchMouse = try c.decodeIfPresent(Bool.self, forKey: .touchMouse) ?? d.touchMouse
 		highRefreshDisplay = try c.decodeIfPresent(Bool.self, forKey: .highRefreshDisplay) ?? d.highRefreshDisplay
 		frameGeneration = try c.decodeIfPresent(Bool.self, forKey: .frameGeneration) ?? d.frameGeneration
 	}

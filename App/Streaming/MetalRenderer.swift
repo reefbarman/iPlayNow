@@ -851,6 +851,16 @@ final class StreamMetalView: UIView {
 	}
 	var onFrameGenerationTap: (() -> Void)?
 	private var frameGenerationTouches: Set<ObjectIdentifier> = []
+	/// Touches on the picture work as a mouse: pointing straight at things with a controller,
+	/// and as a trackpad in the top half with virtual controls up.
+	var onMouse: ((TouchMouse.Event) -> Void)? {
+		didSet { mouse.onEvent = onMouse }
+	}
+	private let mouse = TouchMouse()
+	private var touchMouse = false
+	/// The picture's width over height, and whether it's zoomed to fill the view
+	var videoAspect: CGFloat = 16.0 / 9.0
+	var fillsView = false
 	static let frameGenerationCornerSize = CGSize(width: 130, height: 90)
 
 	/// Hot corner size in points, at the top-right and top-left of the view
@@ -958,18 +968,34 @@ final class StreamMetalView: UIView {
 		controls.style = style
 	}
 
-	func setInputMode(acceptsInput: Bool, virtualControls: Bool) {
+	func setInputMode(acceptsInput: Bool, virtualControls: Bool, touchMouse: Bool) {
 		let hideControls = !acceptsInput || !virtualControls
-		guard self.acceptsInput != acceptsInput || controls.isHidden != hideControls else { return }
+		guard self.acceptsInput != acceptsInput || controls.isHidden != hideControls || self.touchMouse != touchMouse else { return }
 		resetTouches()
 		self.acceptsInput = acceptsInput
+		self.touchMouse = touchMouse
 		controls.isHidden = hideControls
+		// With a controller the whole picture points one-to-one; virtual controls leave the
+		// top half, which works better as a trackpad
+		mouse.mode = hideControls ? .direct : .trackpad
 	}
 
 	private func resetTouches() {
 		frameGenerationTouches.removeAll()
 		controls.reset()
+		mouse.reset()
 		onReset?()
+	}
+
+	/// Where the renderer draws the picture: centred, fitted or filling
+	private var pictureRect: CGRect {
+		let aspect = videoAspect > 0 ? videoAspect : 16.0 / 9.0
+		var width = bounds.width, height = bounds.width / aspect
+		if fillsView ? height < bounds.height : height > bounds.height {
+			height = bounds.height
+			width = height * aspect
+		}
+		return CGRect(x: bounds.midX - width / 2, y: bounds.midY - height / 2, width: width, height: height)
 	}
 
 	// MARK: Touches
@@ -995,6 +1021,7 @@ final class StreamMetalView: UIView {
 
 	override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
 		guard acceptsInput else { return }
+		mouse.pictureRect = pictureRect
 		for touch in touches {
 			let p = touch.location(in: self)
 			if cornerRect.contains(p) {
@@ -1008,21 +1035,30 @@ final class StreamMetalView: UIView {
 			let key = ObjectIdentifier(touch)
 			let inFrameGenerationCorner = frameGenerationCornerRect.contains(p)
 			if !controls.isHidden {
-				// Fixed controls win over shortcuts, and sticks only start in free space.
-				let result = controls.begin(key, at: p, allowsStick: !inFrameGenerationCorner)
+				// Fixed controls win over shortcuts, and sticks only start in free space:
+				// the lower half when the top half is the mouse.
+				let allowsStick = !inFrameGenerationCorner && (!touchMouse || p.y >= bounds.midY)
+				let result = controls.begin(key, at: p, allowsStick: allowsStick)
 				if let state = result.state { onVirtualPad?(state) }
 				if result.handled { continue }
 			}
 			if inFrameGenerationCorner {
 				frameGenerationTouches.insert(key)
+				continue
+			}
+			if touchMouse {
+				_ = mouse.begin(key, at: p)
 			}
 		}
 	}
 
 	override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+		mouse.pictureRect = pictureRect
 		for touch in touches {
 			let key = ObjectIdentifier(touch)
-			if let state = controls.move(key, to: touch.location(in: self)) { onVirtualPad?(state) }
+			let p = touch.location(in: self)
+			if let state = controls.move(key, to: p) { onVirtualPad?(state) }
+			mouse.move(key, to: p)
 		}
 	}
 
@@ -1042,6 +1078,7 @@ final class StreamMetalView: UIView {
 				continue
 			}
 			if let state = controls.end(key) { onVirtualPad?(state) }
+			mouse.end(key, cancelled: !allowsTap)
 		}
 	}
 }

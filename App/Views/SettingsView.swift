@@ -93,9 +93,11 @@ private extension StreamSettings {
 	}
 
 	var virtualControlsSummary: String {
-		guard virtualControls != .never else { return virtualControls.label }
+		let mouse: String? = touchMouse ? "Touch mouse" : nil
+		guard virtualControls != .never else { return Self.summary([virtualControls.label, mouse]) }
 		return Self.summary([
 			virtualControls.label,
+			mouse,
 			controlsSize.label,
 			"\(Int((controlsOpacity * 100).rounded()))%",
 			fixedSticks ? "Fixed sticks" : nil,
@@ -401,7 +403,8 @@ private struct VirtualControlsSettingsPage: View {
 	@Binding var settings: StreamSettings
 
 	private var rows: [GamepadRow] {
-		var rows = [GamepadRow.picker("show", $settings.virtualControls, VirtualControlsMode.allCases)]
+		var rows = [GamepadRow.toggle("touchMouse", $settings.touchMouse),
+			.picker("show", $settings.virtualControls, VirtualControlsMode.allCases)]
 		guard settings.virtualControls != .never else { return rows }
 		rows += [
 			.picker("size", $settings.controlsSize, ControlsSize.allCases),
@@ -414,7 +417,14 @@ private struct VirtualControlsSettingsPage: View {
 	var body: some View {
 		Form {
 			Section {
-				Picker("Show", selection: $settings.virtualControls) {
+				Toggle("Touch as mouse", isOn: $settings.touchMouse)
+					.gamepadRow("touchMouse")
+			} footer: {
+				Text("With a controller, tap the picture to click there and drag to drag. With virtual controls, the top half works like a trackpad: drag to move the pointer, tap to click, and tap then drag to hold the button. Either way, press and hold or tap with two fingers to right-click, and drag with two fingers to scroll.")
+			}
+
+			Section {
+				Picker("Show virtual controls", selection: $settings.virtualControls) {
 					ForEach(VirtualControlsMode.allCases) { Text($0.label).tag($0) }
 				}
 				.gamepadRow("show")

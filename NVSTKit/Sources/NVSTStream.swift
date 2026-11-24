@@ -191,6 +191,32 @@ public final class NVSTStream: @unchecked Sendable {
 		input.send(pad)
 	}
 
+	/// Any thread. An absolute pointer position, `x`/`y` within a `width`×`height` space covering
+	/// the whole picture. Dropped until input activates.
+	public func sendMouseMove(x: Int, y: Int, width: Int, height: Int) {
+		let w = max(1, min(Int(UInt16.max), width)), h = max(1, min(Int(UInt16.max), height))
+		input.sendRemote(NvstRemoteInput.absoluteMouseMove(
+			x: UInt16(max(0, min(w - 1, x))), y: UInt16(max(0, min(h - 1, y))),
+			viewportWidth: UInt16(w), viewportHeight: UInt16(h)))
+	}
+
+	/// Any thread. Moves the pointer from wherever it is, in stream pixels. Dropped until input activates.
+	public func sendMouseMove(dx: Int, dy: Int) {
+		guard dx != 0 || dy != 0 else { return }
+		input.sendRemote(NvstRemoteInput.mouseMove(deltaX: Int16(clamping: dx), deltaY: Int16(clamping: dy)))
+	}
+
+	/// Any thread. Dropped until input activates; held buttons are let go on `stop()`.
+	public func sendMouseButton(_ button: NVSTMouseButton, pressed: Bool) {
+		input.sendMouseButton(button, pressed: pressed)
+	}
+
+	/// Any thread. Vertical wheel in Windows `WHEEL_DELTA` units: 120 a notch, positive scrolls up.
+	public func sendMouseWheel(_ delta: Int) {
+		guard delta != 0 else { return }
+		input.sendRemote(NvstRemoteInput.mouseWheel(delta: Int16(clamping: delta)))
+	}
+
 	public func requestKeyframe() {
 		guard let runner = state.withLock({ $0.runner }) else { return }
 		Task { await runner.requestKeyframe() }
@@ -366,14 +392,47 @@ final class NVSTAudioRing: @unchecked Sendable {
 
 // MARK: - Input
 
-/// Serialises gamepad packets for pad 0. Holds the latest state until the seat has activated
-/// input, then sends it and every change after.
+public enum NVSTMouseButton: Sendable, Hashable {
+	case left, middle, right
+
+	var wire: NvstRemoteInput.Button {
+		switch self {
+		case .left: .left
+		case .middle: .middle
+		case .right: .right
+		}
+	}
+}
+
+/// Serialises input for the seat. Gamepad: holds the latest pad 0 state until the seat has
+/// activated input, then sends it and every change after. Mouse: remote-input packets in a
+/// timestamp envelope on the control channel (where the seat takes remote input), dropped
+/// while input isn't active.
 final class NVSTInputGate: @unchecked Sendable {
 	private let queue = DispatchQueue(label: "dev.reefbarman.iplaynow.nvst.input", qos: .userInteractive)
 	private var bundle: NvstNativeBundle?
 	private var clock: NvstSessionClock?
 	private var latest = NVSTGamepad()
 	private var sequence: UInt16 = 0
+	private var heldButtons: Set<NVSTMouseButton> = []
+
+	func sendRemote(_ packet: Data) {
+		queue.async { [self] in transmitRemote(packet) }
+	}
+
+	func sendMouseButton(_ button: NVSTMouseButton, pressed: Bool) {
+		queue.async { [self] in
+			if pressed { heldButtons.insert(button) } else if heldButtons.remove(button) == nil { return }
+			transmitRemote(NvstRemoteInput.mouseButton(button.wire, isPressed: pressed))
+		}
+	}
+
+	private func transmitRemote(_ packet: Data) {
+		guard let bundle, let clock else { return }
+		let framed = NvstRemoteInput.framed(packet, framing: .enveloped, sequence: 0,
+			timestampMicroseconds: clock.elapsedMicroseconds())
+		_ = bundle.sendControl(NvstControlCommand(code: .remoteInput, payload: framed))
+	}
 
 	func send(_ pad: NVSTGamepad) {
 		queue.async { [self] in
@@ -395,7 +454,11 @@ final class NVSTInputGate: @unchecked Sendable {
 			if sendingNeutral, bundle != nil {
 				latest = NVSTGamepad()
 				transmit()
+				for button in heldButtons {
+					transmitRemote(NvstRemoteInput.mouseButton(button.wire, isPressed: false))
+				}
 			}
+			heldButtons.removeAll()
 			bundle = nil
 			clock = nil
 		}

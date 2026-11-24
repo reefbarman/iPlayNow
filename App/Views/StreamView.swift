@@ -116,8 +116,12 @@ struct StreamView: View {
 					virtualControls: showsVirtualControls,
 					controlsStyle: VirtualControlsStyle(settings),
 					videoAspectForLetterbox: letterboxAspect(for: session),
+					videoAspect: videoAspect(for: session),
+					fillsView: session.settings.displayMode == .zoom,
+					touchMouse: session.settings.touchMouse,
 					onFrameGenerationTap: activateFrameGenerationShortcut,
 					onVirtualPad: { [weak session] in session?.setVirtualPad($0) },
+					onMouse: { [weak session] in session?.sendMouse($0) },
 					onReset: { [weak session] in session?.resetScreenInput() },
 					onCornerTap: revealMenuButton,
 					onLeftCornerTap: revealGuideButton
@@ -355,6 +359,10 @@ struct StreamView: View {
 
 	private func letterboxAspect(for session: StreamSession) -> CGFloat? {
 		guard session.settings.displayMode == .fit else { return nil }
+		return videoAspect(for: session)
+	}
+
+	private func videoAspect(for session: StreamSession) -> CGFloat {
 		let stats = session.stats
 		if stats.width > 0, stats.height > 0 { return CGFloat(stats.width) / CGFloat(stats.height) }
 		return 16.0 / 9.0
@@ -803,8 +811,12 @@ private struct MetalStreamView: UIViewRepresentable {
 	let virtualControls: Bool
 	let controlsStyle: VirtualControlsStyle
 	let videoAspectForLetterbox: CGFloat?
+	let videoAspect: CGFloat
+	let fillsView: Bool
+	let touchMouse: Bool
 	let onFrameGenerationTap: () -> Void
 	let onVirtualPad: (VirtualPadState) -> Void
+	let onMouse: (TouchMouse.Event) -> Void
 	let onReset: () -> Void
 	let onCornerTap: () -> Void
 	let onLeftCornerTap: () -> Void
@@ -822,8 +834,11 @@ private struct MetalStreamView: UIViewRepresentable {
 		uiView.videoAspectForLetterbox = videoAspectForLetterbox
 		uiView.onFrameGenerationTap = onFrameGenerationTap
 		uiView.onVirtualPad = onVirtualPad
+		uiView.onMouse = onMouse
+		uiView.videoAspect = videoAspect
+		uiView.fillsView = fillsView
 		uiView.onReset = onReset
 		uiView.setControlsStyle(controlsStyle)
-		uiView.setInputMode(acceptsInput: acceptsInput, virtualControls: virtualControls)
+		uiView.setInputMode(acceptsInput: acceptsInput, virtualControls: virtualControls, touchMouse: touchMouse)
 	}
 }
