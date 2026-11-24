@@ -499,6 +499,13 @@ struct StreamView: View {
 					.allowsHitTesting(false)
 					.transition(.opacity)
 			}
+		case .reconnecting(let attempt):
+			statusCard {
+				ProgressView().controlSize(.large)
+				Text("Connection lost. Reconnecting…").font(.headline)
+				Text("Attempt \(attempt) of \(StreamSession.maxReconnectAttempts)").foregroundStyle(.secondary)
+				Button("Quit") { dismiss() }.buttonStyle(.bordered)
+			}
 		case .ended(let error):
 			statusCard {
 				if let error {
@@ -509,7 +516,11 @@ struct StreamView: View {
 				}
 				HStack {
 					Button("Close") { dismiss() }.buttonStyle(.bordered)
-					Button("Play again") { session.playAgain() }.buttonStyle(.borderedProminent)
+					if session.canReconnect {
+						Button("Reconnect") { session.reconnect() }.buttonStyle(.borderedProminent)
+					} else {
+						Button("Play again") { session.playAgain() }.buttonStyle(.borderedProminent)
+					}
 				}
 			}
 		}

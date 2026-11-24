@@ -41,6 +41,21 @@ final class GFNLaunch {
 		task = Task { [weak self] in await self?.run() }
 	}
 
+	/// The stream dropped but the session may still be alive: claim the same rig back and wait
+	/// until it's ready again. Ends in `.ready` or `.failed`, like `start()`.
+	func rejoin() {
+		task?.cancel()
+		guard session != nil else {
+			phase = .failed("The GeForce NOW session has ended.")
+			return
+		}
+		phase = .settingUp
+		task = Task { [weak self] in await self?.runRejoin() }
+	}
+
+	/// A session we could still rejoin
+	var canRejoin: Bool { session != nil }
+
 	/// Resolution and frame rate for the next `start()`
 	func setRequest(_ request: GFNStreamRequest) {
 		self.request = request
@@ -91,7 +106,7 @@ final class GFNLaunch {
 	private func run() async {
 		do {
 			guard let provider = accounts.account?.provider else { throw GFNError.notSignedIn }
-			var token = try await accounts.accessToken()
+			let token = try await accounts.accessToken()
 			let running = (try? await GFNSessions.active(token: token, provider: provider)) ?? []
 
 			var current: GFNSession?
@@ -121,7 +136,7 @@ final class GFNLaunch {
 					return
 				}
 			}
-			guard var session = current else { return }
+			guard let session = current else { return }
 			self.session = session
 			if Task.isCancelled {
 				// cancel() ran while the create was in flight; end what it made
@@ -129,42 +144,75 @@ final class GFNLaunch {
 				return
 			}
 			update(session)
-
-			var readyPolls = 0
-			var failures = 0
-			while true {
-				try Task.checkCancellation()
-				if isReady(session) {
-					readyPolls += 1
-					if readyPolls >= (session.status == 3 ? 2 : 3) {
-						phase = .ready(session)
-						return
-					}
-				} else {
-					readyPolls = 0
-				}
-				try await Task.sleep(for: .seconds(2))
-				token = try await accounts.accessToken()
-				do {
-					session = try await GFNSessions.poll(token: token, session)
-					failures = 0
-					self.session = session
-					update(session)
-				} catch let error as GFNError {
-					throw error
-				} catch is CancellationError {
-					throw CancellationError()
-				} catch {
-					// Brief network trouble shouldn't lose the queue place
-					failures += 1
-					if failures >= 8 { throw error }
-				}
-			}
+			try await waitUntilReady(session)
 		} catch is CancellationError {
 		} catch {
 			if case GFNError.queueAbandoned = error { session = nil }
 			if case GFNError.sessionEnded = error { session = nil }
 			fail(error)
+		}
+	}
+
+	private func runRejoin() async {
+		do {
+			guard var current = session else { return }
+			var token = try await accounts.accessToken()
+			// See where the rig stands first: still queued needs no claim, ended can't be rejoined
+			if let polled = try? await GFNSessions.poll(token: token, current) {
+				current = polled
+				session = polled
+			}
+			try Task.checkCancellation()
+			if current.status != 1 {
+				token = try await accounts.accessToken()
+				current = try await GFNSessions.claim(token: token, current, game: game, variant: variant, request: request)
+				session = current
+			}
+			try Task.checkCancellation()
+			// The rig takes a moment to swap clients; don't go back to it on the old details
+			try await waitUntilReady(current, freshPolls: true)
+		} catch is CancellationError {
+		} catch {
+			if case GFNError.sessionEnded = error { session = nil }
+			fail(error)
+		}
+	}
+
+	/// Polls until the rig has stayed ready for a couple of polls, then moves to `.ready`.
+	/// freshPolls: don't trust `session`'s current details, poll at least once first.
+	private func waitUntilReady(_ start: GFNSession, freshPolls: Bool = false) async throws {
+		var session = start
+		var readyPolls = 0
+		var failures = 0
+		var polled = !freshPolls
+		while true {
+			try Task.checkCancellation()
+			if polled, isReady(session) {
+				readyPolls += 1
+				if readyPolls >= (session.status == 3 ? 2 : 3) {
+					phase = .ready(session)
+					return
+				}
+			} else {
+				readyPolls = 0
+			}
+			try await Task.sleep(for: .seconds(freshPolls && !polled ? 1 : 2))
+			let token = try await accounts.accessToken()
+			do {
+				session = try await GFNSessions.poll(token: token, session)
+				polled = true
+				failures = 0
+				self.session = session
+				update(session)
+			} catch let error as GFNError {
+				throw error
+			} catch is CancellationError {
+				throw CancellationError()
+			} catch {
+				// Brief network trouble shouldn't lose the queue place
+				failures += 1
+				if failures >= 8 { throw error }
+			}
 		}
 	}
 

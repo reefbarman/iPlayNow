@@ -40,10 +40,16 @@ final class StreamSession {
 		case launching
 		case connecting
 		case streaming
+		/// The connection dropped: getting the same rig back. 1...maxReconnectAttempts.
+		case reconnecting(attempt: Int)
 		case ended(error: String?)
 	}
 
+	static let maxReconnectAttempts = 3
+
 	private(set) var state: State = .launching
+	/// The ended screen can offer Reconnect: the drop wasn't the game or GeForce NOW ending things
+	private(set) var canReconnect = false
 	private(set) var stats = StreamStats()
 	/// Folded or backgrounded: video isn't drawn and audio is muted, the stream stays up
 	private(set) var paused = false
@@ -78,6 +84,8 @@ final class StreamSession {
 	@ObservationIgnored private var lifecycleObservers: [NSObjectProtocol] = []
 	/// Bumped on every teardown, so late callbacks from an old stream are ignored
 	@ObservationIgnored private var streamID = 0
+	@ObservationIgnored private var reconnectWork: DispatchWorkItem?
+	@ObservationIgnored private var reconnectAttempt = 0
 
 	init(accounts: GFNAccountStore, game: GFNGame, variant: GFNGameVariant, settings: StreamSettings) {
 		self.settings = settings
@@ -90,9 +98,18 @@ final class StreamSession {
 				MainActor.assumeIsolated { self?.releaseInput() }
 			},
 		]
-		launch.onPhase = { [weak self] phase in
-			guard case .ready(let session) = phase else { return }
-			self?.connect(session)
+		launch.onPhase = { [weak self] phase in self?.launchPhaseChanged(phase) }
+	}
+
+	private func launchPhaseChanged(_ phase: GFNLaunch.Phase) {
+		switch phase {
+		case .ready(let session):
+			connect(session)
+		case .failed(let message):
+			// While launching, the launch card shows this itself
+			if case .reconnecting = state { reconnectFailed(message) }
+		default:
+			break
 		}
 	}
 
@@ -115,6 +132,8 @@ final class StreamSession {
 			return
 		}
 		teardown()
+		cancelReconnect()
+		canReconnect = false
 		state = .launching
 		launch.start()
 	}
@@ -122,6 +141,8 @@ final class StreamSession {
 	/// Ends the stream and the GeForce NOW session. Safe to call more than once.
 	func stop() {
 		teardown()
+		cancelReconnect()
+		canReconnect = false
 		if case .ended = state {} else { state = .ended(error: nil) }
 		let launch = launch
 		Task { await launch.cancel() }
@@ -136,7 +157,8 @@ final class StreamSession {
 
 	private func connect(_ session: GFNSession) {
 		guard stream == nil, let renderer else { return }
-		state = .connecting
+		// A reconnect keeps its own card up until the picture is back
+		if case .reconnecting = state {} else { state = .connecting }
 		streamID &+= 1
 		let id = streamID
 		let s = streamSettings
@@ -181,6 +203,8 @@ final class StreamSession {
 			do {
 				try await stream.start()
 				guard let self, self.streamID == id else { return }
+				if self.reconnectAttempt > 0 { log.notice("Reconnected after \(self.reconnectAttempt) attempt(s)") }
+				self.reconnectAttempt = 0
 				self.state = .streaming
 				self.audio.start(stream: stream, mic: stream.config.microphone && stream.microphoneAvailable)
 				self.audio.muted = self.paused
@@ -191,6 +215,10 @@ final class StreamSession {
 				guard let self, self.streamID == id else { return }
 				log.error("Stream start failed: \(error.localizedDescription, privacy: .public)")
 				self.teardown()
+				if case .reconnecting = self.state {
+					self.reconnectFailed(error.localizedDescription)
+					return
+				}
 				self.state = .ended(error: error.localizedDescription)
 				await self.launch.end()
 			}
@@ -200,10 +228,78 @@ final class StreamSession {
 	private func streamEnded(_ end: NVSTEnd, id: Int) {
 		guard id == streamID else { return }
 		log.notice("Stream ended: \(String(describing: end), privacy: .public)")
+		let wasPlaying = state == .streaming
 		teardown()
-		state = .ended(error: end.message)
-		let launch = launch
-		Task { await launch.end() }
+		switch end {
+		case .failed(let reason) where wasPlaying:
+			// The connection dropped, not the game: the rig is probably still there
+			beginReconnect(reason: reason)
+		case .paused:
+			// GeForce NOW holds the rig for a while; the player can pick it back up
+			canReconnect = launch.canRejoin
+			state = .ended(error: end.message)
+		default:
+			state = .ended(error: end.message)
+			let launch = launch
+			Task { await launch.end() }
+		}
+	}
+
+	// MARK: - Reconnect
+
+	/// From the ended screen: try to get the same rig back
+	func reconnect() {
+		guard case .ended = state, canReconnect else { return }
+		cancelReconnect()
+		canReconnect = false
+		reconnectAttempt = 1
+		state = .reconnecting(attempt: 1)
+		launch.rejoin()
+	}
+
+	private func beginReconnect(reason: String) {
+		cancelReconnect()
+		log.notice("Connection lost (\(reason, privacy: .public)), reconnecting")
+		reconnectAttempt = 1
+		state = .reconnecting(attempt: 1)
+		scheduleRejoin(after: 1)
+	}
+
+	/// A reconnect attempt didn't work: wait longer and try again, or give up
+	private func reconnectFailed(_ message: String) {
+		guard case .reconnecting = state else { return }
+		log.notice("Reconnect attempt \(self.reconnectAttempt) failed: \(message, privacy: .public)")
+		guard reconnectAttempt < Self.maxReconnectAttempts, launch.canRejoin else {
+			reconnectAttempt = 0
+			// Leaving the screen ends the session, so it's safe to keep it for a manual retry
+			canReconnect = launch.canRejoin
+			state = .ended(error: canReconnect
+				? "Couldn't reconnect to \(game.title). Check your connection, then try again."
+				: message)
+			return
+		}
+		reconnectAttempt += 1
+		state = .reconnecting(attempt: reconnectAttempt)
+		// 1 s, 2 s, 4 s
+		scheduleRejoin(after: pow(2, Double(reconnectAttempt - 1)))
+	}
+
+	private func scheduleRejoin(after delay: Double) {
+		let work = DispatchWorkItem { [weak self] in
+			MainActor.assumeIsolated {
+				guard let self, case .reconnecting = self.state else { return }
+				self.reconnectWork = nil
+				self.launch.rejoin()
+			}
+		}
+		reconnectWork = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+	}
+
+	private func cancelReconnect() {
+		reconnectWork?.cancel()
+		reconnectWork = nil
+		reconnectAttempt = 0
 	}
 
 	private func teardown() {

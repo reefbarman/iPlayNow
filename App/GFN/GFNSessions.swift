@@ -109,6 +109,45 @@ enum GFNSessions {
 		] as [String: Any]]
 	}
 
+	// MARK: - Claim
+
+	/// Takes the rig back after the stream dropped: CloudMatch's RESUME, which repeats the create
+	/// request. Uses a fresh client id, which later polls and the stop must reuse.
+	static func claim(token: String, _ session: GFNSession, game: GFNGame, variant: GFNGameVariant,
+					  request: GFNStreamRequest) async throws -> GFNSession {
+		let base = readyDetailsBase(session) ?? pollBase(session)
+		var parts = URLComponents(url: base.appending(path: "v2/session/\(session.id)"), resolvingAgainstBaseURL: false)!
+		parts.queryItems = [
+			.init(name: "keyboardLayout", value: request.keyboardLayout),
+			.init(name: "languageCode", value: request.language),
+		]
+		var body = sessionBody(game: game, variant: variant, request: request)
+		body["action"] = 2
+		body["data"] = "RESUME"
+		let clientID = UUID().uuidString
+		let (data, response) = try await GFNHTTP.send(parts.url!, method: "PUT",
+			headers: GFNHTTP.cloudMatchHeaders(token: token, clientID: clientID, deviceID: session.deviceID, includeOrigin: true),
+			body: try JSONSerialization.data(withJSONObject: body), timeout: 30)
+		if response.statusCode == 401 { throw GFNError.notSignedIn }
+		if response.statusCode == 404 || response.statusCode == 410 {
+			throw GFNError.sessionEnded("The GeForce NOW session has ended.")
+		}
+		guard response.statusCode == 200 else {
+			throw GFNError.server(GFNHTTP.message(data, fallback: "GeForce NOW couldn't hand the rig back."))
+		}
+		var claimed = session
+		claimed.clientID = clientID
+		guard let object = GFNHTTP.json(data)["session"] as? [String: Any] else { return claimed }
+		if let state = GFNHTTP.int(object["status"]), state > 3 && state != 6 {
+			throw GFNError.sessionEnded("The GeForce NOW session has ended.")
+		}
+		var updated = parse(object, base: session.baseURL, clientID: clientID, deviceID: session.deviceID, fallbackAppID: session.appID)
+		if updated.rtspsEndpoints.isEmpty { updated.rtspsEndpoints = session.rtspsEndpoints }
+		if updated.serverHost == nil { updated.serverHost = session.serverHost }
+		if updated.controlBaseURL == nil { updated.controlBaseURL = session.controlBaseURL }
+		return updated
+	}
+
 	// MARK: - Poll
 
 	static func poll(token: String, _ session: GFNSession) async throws -> GFNSession {
