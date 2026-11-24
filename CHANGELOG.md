@@ -2,11 +2,31 @@
 
 Every iPlayNow release, written for players. The same notes are on each [GitHub release](https://github.com/reefbarman/iPlayNow/releases).
 
-## Unreleased
+## v0.3.0 (2026-11-25)
+
+A big catch-up with iPlay5. You can now use touch as a mouse, type with the iPhone keyboard and talk in party chat. The app reconnects to your game after a dropout and learns the right bitrate for each Wi-Fi network. Settings work with a controller, and there's a 3D Controller Test, screenshots and a new guide site at [reefbarman.github.io/iPlayNow](https://reefbarman.github.io/iPlayNow/).
 
 ### New
-- **Controller Test:** in Settings › Controller and the stream menu. A 3D controller shows every button, stick and trigger as GeForce NOW gets it, turns as you turn yours, and tests rumble and haptics. PlayStation controllers get a DualSense with touchpad, lightbar, player light and adaptive trigger tests; anything else gets an Xbox controller with trigger motor tests. Opened during a stream, the game doesn't get your controller until you close it.
+- **Touch as a mouse:** for launchers, logins and menus that want a pointer. With a controller, tap the picture to click exactly there and drag to drag. With virtual controls showing, the top half of the screen works like a trackpad: drag to move the pointer, tap to click, and tap then drag to hold the button. Press and hold or tap with two fingers to right-click, and drag with two fingers to scroll. Turn it off in Settings › Virtual controls › Touch as mouse.
+- **Typing with the iPhone keyboard:** tap the top-left corner of the stream, then the keyboard button, or choose **Type with the keyboard** in the stream menu. Each letter goes to the game as you type, so logins, password fields and chat work. A bar above the keyboard adds Esc, Tab and the arrow keys.
+- **Microphone:** talk in game and party chat. Turn it on in Settings › Audio › Microphone. While streaming, tap the top-left corner, then the mic button, to mute, or use the stream menu. A small red mic stays in the corner while you're muted.
+- **Reconnects after a dropout:** if the connection drops mid-game, the app gets the same rig back from GeForce NOW, so your game is still where you left it. It tries three times, then offers **Reconnect**.
+- **Auto bitrate:** learns the bitrate that works on each Wi-Fi network. After a clean game it tries a little more next time, and after a game that dropped video it uses less. **Forget learned bitrates** clears what it has learned.
+- **Check connection:** in the stream menu, under Connection. It watches 20 seconds of the stream, tells you how the connection is doing and can suggest a bitrate for your next game.
+- **Screenshots:** choose **Save screenshot to Photos** in the stream menu to save the game picture, without the virtual controls or black bars.
+- **Settings with a controller:** Settings, a game's video settings and the in-game menu all work with a controller. Up and down move, left and right change a setting, A toggles or opens it and B goes back. In the library, Menu opens Settings, View changes the sort and LB and RB step through the stores.
+- **Controller Test:** in Settings › Controller and the stream menu. A 3D controller shows every button, stick and trigger as GeForce NOW gets it, turns as you turn yours, and tests rumble and haptics. PlayStation controllers get a DualSense with touchpad, lightbar, player light and adaptive trigger tests. Anything else gets an Xbox controller with trigger motor tests. Tap **Recentre** to face the controller front-on and remember how you hold it.
 - **PlayStation button names:** with a DualSense or DualShock 4 connected, settings and hints say Cross, Circle, Square, Triangle, L1, R2 and so on. The virtual controls stay Xbox.
+- **No controller? Pick how to play:** if a game starts with no controller connected, it waits for one, or you can choose **Use virtual controls** or **Start without controls**.
+- **Home as the Xbox button:** on iOS 27, the app offers to open the iOS setting that lets apps use the controller's Home button. Settings › Controller › Home Button Settings opens it any time. Once it's allowed, Home opens GeForce NOW's in-game menu.
+- **Controls Guide:** Settings › Controller › Controls Guide explains the controller shortcuts, touch as a mouse, the virtual controls and the hidden corner buttons.
+- **Share diagnostics and Report a problem:** Settings › Share diagnostics makes a text report to attach to a GitHub issue, with IP addresses, IDs, sign-in tokens and your account's name and email removed.
+- **About:** Settings › About shows the version, the source code, the licences of everything in the app and the privacy policy.
+- **Guides:** every feature and setting is now explained at [reefbarman.github.io/iPlayNow](https://reefbarman.github.io/iPlayNow/).
+
+### Notes
+- **Auto bitrate is on by default.** The bitrate in Settings is now the starting bitrate for each Wi-Fi network. Turn **Auto bitrate** off to use a fixed bitrate. On mobile data, and for games with their own video settings, the bitrate is used as set.
+- **Microphone is off by default.** iOS asks for microphone access the first time you turn it on, and Photos access the first time you save a screenshot (add only).
 
 ## v0.2.0 (2026-11-24)
 
