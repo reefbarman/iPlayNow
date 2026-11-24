@@ -488,7 +488,7 @@ private struct StoreChoiceView: View {
 					Toggle("Remember my choice", isOn: $remember)
 						.listRowBackground(highlight(game.ownedVariants.count))
 				} footer: {
-					Text("Press and hold the game's cover to choose again, or press X on it with a controller.")
+					Text("Press and hold the game's cover to choose again, or press \(ControllerStyle.current.x) on it with a controller.")
 				}
 			}
 			.navigationTitle("Play on")

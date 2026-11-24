@@ -606,6 +606,8 @@ struct StreamView: View {
 				quitArmed = false
 			}
 		}
+		// The Controller Test (on the Controller page) borrows the stream's controller while it's open
+		.environment(\.lendController, { [weak session] lend in session?.lendController(lend) })
 	}
 }
 

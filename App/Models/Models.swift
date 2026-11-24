@@ -100,8 +100,8 @@ enum GyroAimMode: String, Codable, CaseIterable, Identifiable {
 		switch self {
 		case .off: "Off"
 		case .always: "Always"
-		case .holdingLT: "While holding LT"
-		case .holdingRB: "While holding RB"
+		case .holdingLT: "While holding \(ControllerStyle.current.lt)"
+		case .holdingRB: "While holding \(ControllerStyle.current.rb)"
 		}
 	}
 }

@@ -2,6 +2,12 @@
 
 Every iPlayNow release, written for players. The same notes are on each [GitHub release](https://github.com/reefbarman/iPlayNow/releases).
 
+## Unreleased
+
+### New
+- **Controller Test:** in Settings › Controller and the stream menu. A 3D controller shows every button, stick and trigger as GeForce NOW gets it, turns as you turn yours, and tests rumble and haptics. PlayStation controllers get a DualSense with touchpad, lightbar, player light and adaptive trigger tests; anything else gets an Xbox controller with trigger motor tests. Opened during a stream, the game doesn't get your controller until you close it.
+- **PlayStation button names:** with a DualSense or DualShock 4 connected, settings and hints say Cross, Circle, Square, Triangle, L1, R2 and so on. The virtual controls stay Xbox.
+
 ## v0.2.0 (2026-11-24)
 
 iPlayGFN is now **iPlayNow**. Same app, new name. This release also adds controller button hints to the library, and frame generation now kicks in whenever the game itself runs at half your screen's refresh rate.

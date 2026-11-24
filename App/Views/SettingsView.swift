@@ -86,8 +86,8 @@ private extension StreamSettings {
 		let gyro: String? = switch gyroAim {
 		case .off: nil
 		case .always: "Gyro aim always"
-		case .holdingLT: "Gyro aim on LT"
-		case .holdingRB: "Gyro aim on RB"
+		case .holdingLT: "Gyro aim on \(ControllerStyle.current.lt)"
+		case .holdingRB: "Gyro aim on \(ControllerStyle.current.rb)"
 		}
 		return Self.summary([rumble ? "Rumble on" : "Rumble off", gyro])
 	}
@@ -160,18 +160,20 @@ private extension View {
 private struct GamepadSettingsPage: ViewModifier {
 	let page: SettingsPage
 	let rows: [GamepadRow]
+	/// Something full screen covers the page
+	var covered = false
 	@Environment(SettingsNavigation.self) private var navigation
 
 	func body(content: Content) -> some View {
-		content.gamepadForm(rows, active: navigation.path.last == page) {
+		content.gamepadForm(rows, active: navigation.path.last == page && !covered) {
 			if navigation.path.last == page { navigation.path.removeLast() }
 		}
 	}
 }
 
 private extension View {
-	func gamepadPage(_ page: SettingsPage, _ rows: [GamepadRow]) -> some View {
-		modifier(GamepadSettingsPage(page: page, rows: rows))
+	func gamepadPage(_ page: SettingsPage, _ rows: [GamepadRow], covered: Bool = false) -> some View {
+		modifier(GamepadSettingsPage(page: page, rows: rows, covered: covered))
 	}
 }
 
@@ -256,14 +258,16 @@ private struct DisplaySettingsPage: View {
 	}
 }
 
-/// Vibration and gyro aiming
+/// Vibration, gyro aiming and the Controller Test
 private struct ControllerSettingsPage: View {
 	@Binding var settings: StreamSettings
 	private static let deviceHasHaptics = CHHapticEngine.capabilitiesForHardware().supportsHaptics
 	@Environment(SettingsNavigation.self) private var navigation
+	@Environment(\.lendController) private var lendController
+	@State private var testing = false
 
 	private var rows: [GamepadRow] {
-		var rows = [GamepadRow.toggle("rumble", $settings.rumble)]
+		var rows = [GamepadRow.link("test") { testing = true }, .toggle("rumble", $settings.rumble)]
 		if Self.deviceHasHaptics && settings.rumble {
 			rows.append(.picker("haptics", $settings.phoneHaptics, PhoneHaptics.allCases))
 		}
@@ -273,6 +277,13 @@ private struct ControllerSettingsPage: View {
 
 	var body: some View {
 		Form {
+			Section {
+				ControllerTestLink(isPresented: $testing, onActiveChange: lendController)
+					.gamepadRow("test")
+			} footer: {
+				Text("See every button, stick and trigger as the game gets it, and try rumble.")
+			}
+
 			Section {
 				Toggle("Rumble", isOn: $settings.rumble)
 					.gamepadRow("rumble")
@@ -299,11 +310,11 @@ private struct ControllerSettingsPage: View {
 			} header: {
 				Text("Motion")
 			} footer: {
-				Text("Hold View + Menu for a second during a stream to open the menu.")
+				Text("Hold \(ControllerStyle.current.view) + \(ControllerStyle.current.menu) for a second during a stream to open the menu.")
 			}
 		}
 		.settingsPage("Controller")
-		.gamepadPage(.controller, rows)
+		.gamepadPage(.controller, rows, covered: testing)
 	}
 }
 
@@ -495,7 +506,7 @@ struct VideoSettingsSection: View {
 		} footer: {
 			Text("Your membership decides the most GeForce NOW will stream. 1440p, 4K, 120 fps and HDR need Ultimate, and HDR needs H.265 and a game that supports it. These can't change during a game.")
 			if customGameName == nil {
-				Text("To give a game its own video settings, press and hold its cover and tap Video settings, or select it with a controller and press Y.")
+				Text("To give a game its own video settings, press and hold its cover and tap Video settings, or select it with a controller and press \(ControllerStyle.current.y).")
 			}
 		}
 	}

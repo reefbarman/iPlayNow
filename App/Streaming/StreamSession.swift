@@ -286,6 +286,17 @@ final class StreamSession {
 		if held { releaseInput() }
 	}
 
+	/// The Controller Test is open over the stream menu: let go of the controller so the test
+	/// can read it, and pick it up again when it closes
+	func lendController(_ lend: Bool) {
+		if lend {
+			releaseInput()
+			input.suspend()
+		} else if stream != nil {
+			input.start()
+		}
+	}
+
 	private func sendPad() {
 		guard let stream else { return }
 		guard !inputHeld else {
