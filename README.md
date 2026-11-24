@@ -13,7 +13,7 @@ Not affiliated with or endorsed by NVIDIA. "GeForce NOW" is a trademark of NVIDI
 
 ## Features
 
-The highlights are below. The [changelog](CHANGELOG.md) lists what changed in each release.
+The highlights are below. The [guides](https://reefbarman.github.io/iPlayNow/) (also in [`docs/`](docs/README.md)) cover every feature and setting, and the [changelog](CHANGELOG.md) lists what changed in each release.
 
 - **Native streaming:** GeForce NOW's NVST protocol, hardware H.265/H.264 decoding and Metal drawing at the screen's native resolution. Up to 4K, 120 fps, 100 Mbps and HDR where your membership allows, Fit or Zoom to fill, Sharp or MetalFX upscaling, and a 120 Hz screen on ProMotion iPhones.
 - **Per-game video settings:** press and hold a cover, then **Video settings** (or select it with a controller and press **Y**), to give a game its own resolution, frame rate, bitrate, codec and HDR.
@@ -38,7 +38,7 @@ The highlights are below. The [changelog](CHANGELOG.md) lists what changed in ea
 - **Check connection:** in the stream menu, under Connection. It watches the next 20 seconds of the stream for lost video, then tells you how the connection is doing and can suggest a bitrate. Tap **Use … Mbps next time** to use it from your next game. Play something busy while it checks, since GeForce NOW sends much less on menus and quiet scenes.
 - **Screenshots:** open the stream menu and choose **Save screenshot to Photos** to save the game picture to your photo library. It's the whole picture at the stream's resolution, without the virtual controls or black bars, and HDR games are converted to normal colour. The first time, iOS asks to let iPlayNow add photos. The game keeps running behind the menu, so the screenshot shows the moment you choose it.
 - **Reporting problems:** Settings › Share diagnostics makes a text report with your phone model, screen, settings and the app's logs since it was opened, ready to attach to a GitHub issue (Settings › Report a problem on GitHub). IP addresses, IDs, sign-in tokens and your account's name and email are removed first. Share it before closing the app, so the logs still cover the problem.
-- **About:** Settings › About shows the version, links to the exact source code the build came from, and lists the licences of everything bundled into the app.
+- **About:** Settings › About shows the version, links to the exact source code the build came from, lists the licences of everything bundled into the app and opens the [privacy policy](docs/privacy.md). iPlayNow has no analytics, ads or accounts of its own, and only talks to NVIDIA's GeForce NOW services.
 
 ## Install
 

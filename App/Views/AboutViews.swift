@@ -13,6 +13,8 @@ enum AppInfo {
 
 	static let repository = URL(string: "https://github.com/reefbarman/iPlayNow")!
 	static let newIssue = URL(string: "https://github.com/reefbarman/iPlayNow/issues/new")!
+	/// docs/privacy.md on the GitHub Pages site
+	static let privacyPolicy = URL(string: "https://reefbarman.github.io/iPlayNow/privacy.html")!
 
 	static var sourceRef: String {
 		(info?["IPlayNowSourceRef"] as? String).flatMap { $0.isEmpty || $0.hasPrefix("$(") ? nil : $0 } ?? "main"
@@ -68,6 +70,10 @@ struct AboutSection: View {
 				Label("Licences", systemImage: "doc.text")
 			}
 			.gamepadRow(SettingsPage.licences.rowID)
+			Link(destination: AppInfo.privacyPolicy) {
+				Label("Privacy policy", systemImage: "hand.raised")
+			}
+			.gamepadRow("about.privacy")
 		} header: {
 			Text("About")
 		} footer: {

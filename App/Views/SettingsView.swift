@@ -709,6 +709,7 @@ struct SettingsView: View {
 			GamepadRow(id: "help.report", confirmLabel: "Open", activate: { openURL(AppInfo.newIssue) }),
 			GamepadRow(id: "about.source", confirmLabel: "Open", activate: { openURL(AppInfo.sourceURL) }),
 			GamepadRow.link(SettingsPage.licences.rowID) { navigation.open(.licences) },
+			GamepadRow(id: "about.privacy", confirmLabel: "Open", activate: { openURL(AppInfo.privacyPolicy) }),
 		]
 	}
 
