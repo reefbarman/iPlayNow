@@ -36,7 +36,7 @@ struct StreamSettingsForm: View {
 
 /// A settings page under the main list. Pushed by value, so a controller can open one too.
 enum SettingsPage: Hashable {
-	case display, controller, gyroAim, virtualControls, audio, licences
+	case display, controller, gyroAim, virtualControls, audio, controlsGuide, licences
 
 	var rowID: String { "page.\(self)" }
 }
@@ -61,6 +61,7 @@ extension View {
 				case .gyroAim: GyroAimSettingsPage(settings: settings)
 				case .virtualControls: VirtualControlsSettingsPage(settings: settings)
 				case .audio: AudioSettingsPage(settings: settings)
+				case .controlsGuide: ControlsGuideView().gamepadPage(.controlsGuide, [])
 				case .licences: LicensesView().gamepadPage(.licences, [])
 				}
 			}
@@ -274,21 +275,32 @@ private struct ControllerSettingsPage: View {
 	@State private var testing = false
 
 	private var rows: [GamepadRow] {
-		var rows = [GamepadRow.link("test") { testing = true }, .toggle("rumble", $settings.rumble)]
+		var rows = [
+			GamepadRow.link(SettingsPage.controlsGuide.rowID) { navigation.open(.controlsGuide) },
+			.link("test") { testing = true },
+			.toggle("rumble", $settings.rumble),
+		]
 		if Self.deviceHasHaptics && settings.rumble {
 			rows.append(.picker("haptics", $settings.phoneHaptics, PhoneHaptics.allCases))
 		}
 		rows.append(.link(SettingsPage.gyroAim.rowID) { navigation.open(.gyroAim) })
+		if HomeButtonSetting.isSupported {
+			rows.append(.link("homeButton") { HomeButtonSetting.openSettings() })
+		}
 		return rows
 	}
 
 	var body: some View {
 		Form {
 			Section {
+				NavigationLink(value: SettingsPage.controlsGuide) {
+					Label("Controls Guide", systemImage: "book")
+				}
+				.gamepadRow(SettingsPage.controlsGuide.rowID)
 				ControllerTestLink(isPresented: $testing, onActiveChange: lendController)
 					.gamepadRow("test")
 			} footer: {
-				Text("See every button, stick and trigger as the game gets it, and try rumble.")
+				Text("Controller Test shows every button, stick and trigger as the game gets it, and lets you try rumble.")
 			}
 
 			Section {
@@ -318,6 +330,17 @@ private struct ControllerSettingsPage: View {
 				Text("Motion")
 			} footer: {
 				Text("Hold \(ControllerStyle.current.view) + \(ControllerStyle.current.menu) for a second during a stream to open the menu.")
+			}
+
+			if HomeButtonSetting.isSupported {
+				Section {
+					Button("Home Button Settings") { HomeButtonSetting.openSettings() }
+						.gamepadRow("homeButton")
+				} header: {
+					Text("Buttons")
+				} footer: {
+					Text("Home Button Settings opens the iOS setting for what your controller's Home button does in apps. Let apps use it and Home works as the Xbox button, which opens GeForce NOW's in-game menu. Otherwise iOS opens its Game Overlay. Open it with your controller connected.")
+				}
 			}
 		}
 		.settingsPage("Controller")
