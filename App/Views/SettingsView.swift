@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreHaptics
 import SwiftUI
 
@@ -18,6 +19,8 @@ struct StreamSettingsForm: View {
 				page: .controller)
 			SettingsLink(title: "Virtual controls", systemImage: "hand.tap", summary: settings.virtualControlsSummary,
 				page: .virtualControls)
+			SettingsLink(title: "Audio", systemImage: "mic", summary: settings.microphone ? "Microphone on" : "Microphone off",
+				page: .audio)
 		}
 	}
 
@@ -25,7 +28,7 @@ struct StreamSettingsForm: View {
 	static func gamepadRows(_ settings: Binding<StreamSettings>, showsVideo: Bool = true,
 		open: @escaping (SettingsPage) -> Void) -> [GamepadRow] {
 		(showsVideo ? VideoSettingsSection.gamepadRows(settings) : [])
-			+ [SettingsPage.display, .controller, .virtualControls].map { page in
+			+ [SettingsPage.display, .controller, .virtualControls, .audio].map { page in
 				GamepadRow.link(page.rowID) { open(page) }
 			}
 	}
@@ -33,7 +36,7 @@ struct StreamSettingsForm: View {
 
 /// A settings page under the main list. Pushed by value, so a controller can open one too.
 enum SettingsPage: Hashable {
-	case display, controller, gyroAim, virtualControls
+	case display, controller, gyroAim, virtualControls, audio
 
 	var rowID: String { "page.\(self)" }
 }
@@ -57,6 +60,7 @@ extension View {
 				case .controller: ControllerSettingsPage(settings: settings)
 				case .gyroAim: GyroAimSettingsPage(settings: settings)
 				case .virtualControls: VirtualControlsSettingsPage(settings: settings)
+				case .audio: AudioSettingsPage(settings: settings)
 				}
 			}
 			.environment(navigation)
@@ -453,6 +457,42 @@ private struct VirtualControlsSettingsPage: View {
 		}
 		.settingsPage("Virtual Controls")
 		.gamepadPage(.virtualControls, rows)
+	}
+}
+
+/// Microphone for game and party chat
+private struct AudioSettingsPage: View {
+	@Binding var settings: StreamSettings
+	@State private var micDenied = AVAudioApplication.shared.recordPermission == .denied
+
+	private var rows: [GamepadRow] { [.toggle("microphone", $settings.microphone)] }
+
+	var body: some View {
+		Form {
+			Section {
+				Toggle("Microphone", isOn: $settings.microphone)
+					.gamepadRow("microphone")
+					.onChange(of: settings.microphone) { _, on in
+						guard on else { return }
+						AVAudioApplication.requestRecordPermission { granted in
+							DispatchQueue.main.async {
+								micDenied = !granted
+								if !granted { settings.microphone = false }
+							}
+						}
+					}
+			} footer: {
+				VStack(alignment: .leading, spacing: 8) {
+					if micDenied {
+						Text("iPlayNow doesn't have access to the microphone. Turn it on in Settings › Apps › iPlayNow.")
+					}
+					Text("Sends your voice to the game for game and party chat. Tap the mic button in the top-left corner of the stream to mute it. Turning this on or off takes effect from the next stream.")
+					Text("On the phone's speaker, echo cancellation stops your party hearing the game. With AirPods or other Bluetooth headphones the phone's mic is used, unless you're on iOS 26 with AirPods that support high-quality recording.")
+				}
+			}
+		}
+		.settingsPage("Audio")
+		.gamepadPage(.audio, rows)
 	}
 }
 

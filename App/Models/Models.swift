@@ -201,6 +201,8 @@ struct StreamSettings: Codable, Equatable {
 	/// Touches on the picture work as a mouse: one-to-one with a controller, a trackpad in the
 	/// top half with virtual controls
 	var touchMouse: Bool = true
+	/// Send the phone's mic to the game for game and party chat. Fixed when a stream starts.
+	var microphone: Bool = false
 	/// Keep a ProMotion screen at 120 Hz while streaming, so frames wait less for the next refresh
 	var highRefreshDisplay: Bool = true
 	/// Experimental: make an in-between frame for each pair of real ones (FrameGen.metal)
@@ -263,6 +265,7 @@ struct StreamSettings: Codable, Equatable {
 		controlsOpacity = min(1, max(0.2, try c.decodeIfPresent(Double.self, forKey: .controlsOpacity) ?? d.controlsOpacity))
 		fixedSticks = try c.decodeIfPresent(Bool.self, forKey: .fixedSticks) ?? d.fixedSticks
 		touchMouse = try c.decodeIfPresent(Bool.self, forKey: .touchMouse) ?? d.touchMouse
+		microphone = try c.decodeIfPresent(Bool.self, forKey: .microphone) ?? d.microphone
 		highRefreshDisplay = try c.decodeIfPresent(Bool.self, forKey: .highRefreshDisplay) ?? d.highRefreshDisplay
 		frameGeneration = try c.decodeIfPresent(Bool.self, forKey: .frameGeneration) ?? d.frameGeneration
 	}

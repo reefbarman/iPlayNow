@@ -442,7 +442,9 @@ public final class NvstNativeBundle: @unchecked Sendable {
                 + " latencyMs=\(Int((device.outputPathLatencySeconds * 1000).rounded()))")
     }
 
-    func sendCapturedMicrophone(pointer: UnsafeRawPointer?, frames: UInt32) {
+    // iPlayNow: public, so the app can feed mic audio it captures itself (startsAudioDevice is false).
+    // `pointer` is an AudioBufferList holding one interleaved 48 kHz Int16 buffer, mono or stereo.
+    public func sendCapturedMicrophone(pointer: UnsafeRawPointer?, frames: UInt32) {
         guard let pointer, let sendPipeline else { return }
         let list = pointer.assumingMemoryBound(to: AudioBufferList.self)
         guard let samples = NvstCoreAudioFormat.stereoCaptureSamples(bufferList: list, frames: frames) else { return }

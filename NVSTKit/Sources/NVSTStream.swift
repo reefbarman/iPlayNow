@@ -21,9 +21,12 @@ public struct NVSTStreamConfig: Sendable {
 	public var codec: NVSTCodec
 	/// 10-bit HDR10 (HEVC only)
 	public var hdr: Bool
+	/// Ask the rig for a mic channel. The app captures and feeds it with `sendMicrophone`.
+	public var microphone: Bool
 
 	public init(sessionID: String, rtspsEndpoints: [String], width: Int, height: Int, fps: Int,
-				maxBitrateKbps: Int, codec: NVSTCodec, hdr: Bool = false) {
+				maxBitrateKbps: Int, codec: NVSTCodec, hdr: Bool = false, microphone: Bool = false) {
+		self.microphone = microphone
 		self.sessionID = sessionID
 		self.rtspsEndpoints = rtspsEndpoints
 		self.width = width
@@ -135,6 +138,8 @@ public final class NVSTStream: @unchecked Sendable {
 		var ended = false
 		var audioBundle: NvstNativeBundle?
 		var rumbleGeneration: UInt64 = 0
+		/// Mic audio reaches the rig only while this is on. Survives a bundle change.
+		var microphoneLive = false
 	}
 	private let state = OSAllocatedUnfairLock(initialState: State())
 	private let audio = NVSTAudioRing(capacityFrames: 48_000 * 150 / 1000)
@@ -231,6 +236,27 @@ public final class NVSTStream: @unchecked Sendable {
 		input.sendRemote(NvstRemoteInput.mouseWheel(delta: Int16(clamping: delta)))
 	}
 
+	/// The rig accepted a mic channel for this stream (known once `start()` returns)
+	public var microphoneAvailable: Bool {
+		state.withLock { $0.audioBundle?.microphoneNegotiation.negotiated ?? false }
+	}
+
+	/// Any thread. Mute stops packets altogether rather than sending silence.
+	public func setMicrophoneLive(_ live: Bool) {
+		let bundle = state.withLock { state -> NvstNativeBundle? in
+			state.microphoneLive = live
+			return state.audioBundle
+		}
+		bundle?.setMicrophoneCaptureEnabled(live)
+	}
+
+	/// Mic capture thread (not a real-time render thread: this allocates). `bufferList` holds one
+	/// interleaved 48 kHz Int16 buffer, mono or stereo. Dropped while muted or before the bundle is up.
+	public func sendMicrophone(_ bufferList: UnsafePointer<AudioBufferList>, frames: UInt32) {
+		guard let bundle = state.withLock({ $0.microphoneLive ? $0.audioBundle : nil }) else { return }
+		bundle.sendCapturedMicrophone(pointer: UnsafeRawPointer(bufferList), frames: frames)
+	}
+
 	public func requestKeyframe() {
 		guard let runner = state.withLock({ $0.runner }) else { return }
 		Task { await runner.requestKeyframe() }
@@ -255,9 +281,11 @@ public final class NVSTStream: @unchecked Sendable {
 			ended: { [weak self] end in self?.finish(end) },
 			bundleChanged: { [weak self] bundle in
 				guard let self else { return }
-				self.state.withLock { state in
+				let live = self.state.withLock { state -> Bool in
 					if !state.stopped { state.audioBundle = bundle }
+					return state.microphoneLive
 				}
+				bundle?.setMicrophoneCaptureEnabled(live)
 				if bundle == nil { self.input.deactivate(sendingNeutral: false) }
 			},
 			inputActivated: { [weak self] bundle, clock in self?.input.activate(bundle: bundle, clock: clock) })
@@ -616,7 +644,11 @@ actor NVSTRunner {
 			}
 			let haptics = events.haptics
 			nativeBundle.onHapticEvents = { events in haptics(events) }
-			let identity = try await nativeBundle.prepare(microphone: nil, audioChannelCount: 2)
+			// Only when the rig offered mic carriage on the bundle, or ANNOUNCE would claim one it never asked for.
+			// Starts muted; setMicrophoneLive opens it.
+			let microphone = config.microphone && microphoneOffered
+				? NvstNativeBundle.MicrophoneSetup(volume: 1, initiallyEnabled: false) : nil
+			let identity = try await nativeBundle.prepare(microphone: microphone, audioChannelCount: 2)
 			guard !stopped else { nativeBundle.close(); return nil }
 			pipeline?.attach(bundle: nativeBundle)
 			events.bundleChanged(nativeBundle)

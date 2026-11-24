@@ -68,6 +68,7 @@ targets:
         CADisableMinimumFrameDurationOnPhone: true
         # NVIDIA's sign-in redirects to http://localhost:2259, which the app catches
         NSLocalNetworkUsageDescription: iPlayNow uses a local address to finish signing in to GeForce NOW.
+        NSMicrophoneUsageDescription: iPlayNow sends your voice to the game for game and party chat when Microphone is on in settings.
         # Game controllers can drive the UI and Game Mode kicks in while streaming
         GCSupportsControllerUserInteraction: true
         GCSupportsGameMode: true

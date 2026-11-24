@@ -26,6 +26,7 @@ The highlights are below. The [changelog](CHANGELOG.md) lists what changed in ea
 - **Gyro aiming:** turn the controller (or the phone) to aim with the right stick, always or only while holding LT or RB, tuned to each game's dead zone.
 - **Touch as a mouse:** for launchers, logins and menus that want a pointer. With a controller, tap the picture to click exactly there and drag to drag. With virtual controls showing, the top half of the screen works like a laptop trackpad: drag to move the pointer, tap to click, and tap then drag to hold the button. Press and hold, or tap with two fingers, to right-click, and drag with two fingers to scroll. Turn it off in Settings › Virtual controls › Touch as mouse.
 - **Typing with the iPhone keyboard:** tap the top-left corner of the stream, then the keyboard button (or choose **Type with the keyboard** in the stream menu). Each letter goes to the game as you type, so it works in logins, password fields and chat, and Return and delete work as normal keys. A bar above the keyboard adds Esc, Tab and the arrow keys.
+- **Microphone:** talk in game and party chat. Turn it on in Settings › Audio › Microphone (it applies from the next stream). While streaming, tap the top-left corner, then the mic button, to mute or unmute, or use the stream menu. A small red mic stays in the corner while you're muted. On the phone's speaker, echo cancellation keeps the game out of your mic.
 - **Virtual controls:** an Xbox layout with coloured A, B, X and Y, floating or fixed sticks, three sizes and adjustable opacity, shown only when you don't have a controller. Floating sticks start wherever your thumb lands in the lower half.
 - **Made for the iPhone Duo:** the game waits on the outer screen until you unfold, plays on the inner one, and folding pauses it.
 - **Handy extras:** battery and temperature in the stream menu, a warning when the phone gets hot, and stats along the top of the picture.
@@ -48,7 +49,7 @@ https://raw.githubusercontent.com/reefbarman/iPlayNow/main/altstore-source.json
 
 1. Open iPlayNow and choose your GeForce NOW provider (NVIDIA, or a regional partner). Sign in.
 2. Tap a game's cover. It queues for a rig if needed, sets up, then streams.
-3. While streaming: tap the top-right corner, then the gear, for the menu and settings. Or hold **View + Menu** for a second. Tap the top-left corner, then the Xbox logo, to press the Xbox button (GeForce NOW's in-game menu), or the keyboard button to type. Tap the bottom-right corner to turn frame generation on and off.
+3. While streaming: tap the top-right corner, then the gear, for the menu and settings. Or hold **View + Menu** for a second. Tap the top-left corner, then the Xbox logo, to press the Xbox button (GeForce NOW's in-game menu), the keyboard button to type, or the mic button to mute. Tap the bottom-right corner to turn frame generation on and off.
 4. **Quit game** in the menu ends the session on GeForce NOW, so it doesn't keep running on your account.
 
 Resolution, frame rate, bitrate, codec and HDR are in Settings (or per game, from the cover). GeForce NOW fixes them when it sets up the rig, so change them before you start a game; the stream menu shows what the session is using. Everything else (picture, controls, vibration, stats) can be changed mid-game from the stream menu.

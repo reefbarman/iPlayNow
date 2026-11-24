@@ -153,6 +153,8 @@ struct StreamView: View {
 
 			if showGuideButton && acceptsScreenInput {
 				guideButton.transition(.opacity)
+			} else if let session, session.micActive, session.micMuted, session.state == .streaming {
+				mutedBadge.transition(.opacity)
 			}
 
 			if let session {
@@ -278,6 +280,15 @@ struct StreamView: View {
 				cornerIcon(showKeyboard ? "keyboard.chevron.compact.down" : "keyboard")
 			}
 			.accessibilityLabel(showKeyboard ? "Hide keyboard" : "Type with the keyboard")
+			if let session, session.micActive {
+				Button {
+					session.toggleMicMuted()
+					scheduleGuideButtonHide()
+				} label: {
+					cornerIcon(session.micMuted ? "mic.slash.fill" : "mic.fill", tint: session.micMuted ? .red : .white)
+				}
+				.accessibilityLabel(session.micMuted ? "Unmute microphone" : "Mute microphone")
+			}
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 		.padding(.top, 14)
@@ -285,10 +296,25 @@ struct StreamView: View {
 		.ignoresSafeArea()
 	}
 
-	private func cornerIcon(_ systemName: String) -> some View {
+	/// While the corner buttons are hidden, a reminder that the mic is muted
+	private var mutedBadge: some View {
+		Image(systemName: "mic.slash.fill")
+			.font(.footnote)
+			.foregroundStyle(.red)
+			.frame(width: 30, height: 30)
+			.background(.black.opacity(0.45), in: Circle())
+			.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+			.padding(.top, 14)
+			.padding(.leading, 20)
+			.ignoresSafeArea()
+			.allowsHitTesting(false)
+			.accessibilityLabel("Microphone muted")
+	}
+
+	private func cornerIcon(_ systemName: String, tint: Color = .white) -> some View {
 		Image(systemName: systemName)
 			.font(.title2)
-			.foregroundStyle(.white)
+			.foregroundStyle(tint)
 			.frame(width: 52, height: 52)
 			.background(.black.opacity(0.55), in: Circle())
 	}
@@ -602,10 +628,17 @@ struct StreamView: View {
 		[
 			GamepadRow(id: "resume", confirmLabel: "Resume", activate: { showMenu = false }),
 			GamepadRow(id: "keyboard", confirmLabel: "Open", activate: openKeyboardFromMenu),
+		] + micMenuRows + [
 			GamepadRow(id: "quit", confirmLabel: quitArmed ? "Confirm quit" : "Quit", activate: {
 				if quitArmed { quit() } else { quitArmed = true }
 			}),
 		] + StreamSettingsForm.gamepadRows(menuSettings, showsVideo: false) { menuNavigation.open($0) }
+	}
+
+	private var micMenuRows: [GamepadRow] {
+		guard let session, session.micActive else { return [] }
+		return [GamepadRow(id: "mic", confirmLabel: session.micMuted ? "Unmute" : "Mute",
+			activate: { [weak session] in session?.toggleMicMuted() })]
 	}
 
 	private var menu: some View {
@@ -617,6 +650,10 @@ struct StreamView: View {
 						.gamepadRow("resume")
 					Button("Type with the keyboard", action: openKeyboardFromMenu)
 						.gamepadRow("keyboard")
+					if let session, session.micActive {
+						Button(session.micMuted ? "Unmute microphone" : "Mute microphone") { session.toggleMicMuted() }
+							.gamepadRow("mic")
+					}
 					Button(quitArmed ? "Press again to quit" : "Quit game", role: .destructive, action: quit)
 						.gamepadRow("quit")
 				} footer: {

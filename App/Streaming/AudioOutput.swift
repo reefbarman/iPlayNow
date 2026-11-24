@@ -9,6 +9,9 @@ import UIKit
 ///
 /// iOS stops the engine for phone calls, Siri, and output changes such as
 /// AirPods connecting, so we restart it when those end.
+///
+/// With the mic on, the same engine captures the phone's mic and hands it to the stream,
+/// which encodes it for the rig's game and party chat.
 final class AudioOutput {
 	private var engine = AVAudioEngine()
 	private var source: AVAudioSourceNode?
@@ -23,6 +26,15 @@ final class AudioOutput {
 	/// ~20 ms of audio before playback starts or resumes after an underrun
 	private let primeFrames = 960
 	private static let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)
+	/// What the stream's mic pipeline takes
+	private static let micFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 1, interleaved: true)
+
+	/// Capturing the mic for this stream (asked for, and allowed)
+	private(set) var micEnabled = false
+	/// The tap thread reads these
+	private let micLock = NSLock()
+	private var micStream: NVSTStream?
+	private var micSending = false
 
 	init() {
 		scratch = .allocate(capacity: scratchFrames * 2)
@@ -57,8 +69,10 @@ final class AudioOutput {
 		scratch.deallocate()
 	}
 
-	func start(stream: NVSTStream) {
+	/// mic: capture the phone's mic too (needs record permission, otherwise it stays off)
+	func start(stream: NVSTStream, mic: Bool) {
 		self.stream = stream
+		micEnabled = mic && AVAudioApplication.shared.recordPermission == .granted
 		activateAudioSession()
 
 		guard let format = Self.format else { return }
@@ -108,6 +122,10 @@ final class AudioOutput {
 		engine.attach(node)
 		engine.connect(node, to: engine.mainMixerNode, format: format)
 		engine.mainMixerNode.outputVolume = isMuted ? 0 : 1
+		if micEnabled {
+			micLock.withLock { micStream = stream }
+			configureMic()
+		}
 		do {
 			try engine.start()
 		} catch {
@@ -116,7 +134,14 @@ final class AudioOutput {
 	}
 
 	func stop() {
+		micLock.withLock {
+			micStream = nil
+			micSending = false
+		}
 		engine.stop()
+		if micEnabled {
+			engine.inputNode.removeTap(onBus: 0)
+		}
 		if let source {
 			engine.detach(source)
 		}
@@ -133,12 +158,92 @@ final class AudioOutput {
 		}
 	}
 
+	/// Mic audio goes to the stream only while this is on (unmuted, not paused)
+	var micLive: Bool {
+		get { micLock.withLock { micSending } }
+		set { micLock.withLock { micSending = newValue } }
+	}
+
+	// MARK: - Mic
+
+	/// Picks echo cancellation for the current output and installs the capture tap.
+	/// The engine must be stopped.
+	private func configureMic() {
+		let input = engine.inputNode
+		input.removeTap(onBus: 0)
+
+		// On the phone's own speaker the mic hears the game, so cancel the echo. Headphones don't need it.
+		let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+		let speaker = outputs.contains { $0.portType == .builtInSpeaker || $0.portType == .builtInReceiver }
+		if input.isVoiceProcessingEnabled != speaker {
+			do {
+				try input.setVoiceProcessingEnabled(speaker)
+				log.notice("Mic echo cancellation \(speaker ? "on" : "off", privacy: .public)")
+			} catch {
+				log.error("Mic voice processing: \(error.localizedDescription, privacy: .public)")
+			}
+		}
+		if speaker {
+			// Don't turn our own game audio down
+			input.voiceProcessingOtherAudioDuckingConfiguration = .init(enableAdvancedDucking: false, duckingLevel: .min)
+		}
+
+		let hardware = input.outputFormat(forBus: 0)
+		guard hardware.sampleRate > 0, hardware.channelCount > 0,
+			let target = Self.micFormat,
+			let converter = AVAudioConverter(from: hardware, to: target)
+		else {
+			log.error("Mic: no usable input format (\(hardware.description, privacy: .public))")
+			return
+		}
+		converter.downmix = true
+		let ratio = target.sampleRate / hardware.sampleRate
+		// ~20 ms per tap; the stream regroups it into the 10 ms packets the rig wants
+		input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(hardware.sampleRate / 50), format: hardware) { [weak self] buffer, _ in
+			self?.sendMic(buffer, converter: converter, target: target, ratio: ratio)
+		}
+	}
+
+	/// Tap thread
+	private func sendMic(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, target: AVAudioFormat, ratio: Double) {
+		guard micLive, buffer.frameLength > 0 else { return }
+		let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 32
+		guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
+		var fed = false
+		var error: NSError?
+		converter.convert(to: out, error: &error) { _, status in
+			if fed {
+				status.pointee = .noDataNow
+				return nil
+			}
+			fed = true
+			status.pointee = .haveData
+			return buffer
+		}
+		guard error == nil, out.frameLength > 0 else { return }
+		micLock.withLock {
+			guard micSending, let micStream else { return }
+			micStream.sendMicrophone(out.audioBufferList, frames: out.frameLength)
+		}
+	}
+
 	// MARK: - Recovery (main thread)
 
 	private func activateAudioSession() {
 		let audioSession = AVAudioSession.sharedInstance()
 		do {
-			try audioSession.setCategory(.playback, mode: .default, options: [])
+			if micEnabled {
+				// A2DP keeps game audio full quality on Bluetooth headphones, using the phone's mic.
+				// On iOS 26, AirPods that support it record at full quality too, instead of
+				// dropping to the hands-free profile.
+				var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
+				if #available(iOS 26.0, *) {
+					options.insert(.bluetoothHighQualityRecording)
+				}
+				try audioSession.setCategory(.playAndRecord, mode: .default, options: options)
+			} else {
+				try audioSession.setCategory(.playback, mode: .default, options: [])
+			}
 			try audioSession.setPreferredSampleRate(48_000)
 			try audioSession.setPreferredIOBufferDuration(0.005)
 			try audioSession.setActive(true)
@@ -156,6 +261,8 @@ final class AudioOutput {
 		engine.disconnectNodeOutput(source)
 		engine.connect(source, to: engine.mainMixerNode, format: format)
 		primed = false
+		// The route may have moved between the speaker and headphones
+		if micEnabled { configureMic() }
 		do {
 			try engine.start()
 		} catch {
@@ -167,8 +274,11 @@ final class AudioOutput {
 	private func rebuild() {
 		guard let stream else { return }
 		log.notice("Rebuilding audio after a media services reset")
+		let mic = micEnabled
+		let live = micLive
 		stop()
 		engine = AVAudioEngine()
-		start(stream: stream)
+		start(stream: stream, mic: mic)
+		micLive = live
 	}
 }

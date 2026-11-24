@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import NVSTKit
 import Observation
@@ -47,6 +48,9 @@ final class StreamSession {
 	/// Folded or backgrounded: video isn't drawn and audio is muted, the stream stays up
 	private(set) var paused = false
 	private(set) var settings: StreamSettings
+	/// The mic is on for this stream: the rig accepted it and the phone is capturing
+	private(set) var micActive = false
+	private(set) var micMuted = false
 
 	let launch: GFNLaunch
 	var game: GFNGame { launch.game }
@@ -140,7 +144,8 @@ final class StreamSession {
 		let config = NVSTStreamConfig(
 			sessionID: session.id, rtspsEndpoints: session.rtspsEndpoints,
 			width: size.width, height: size.height, fps: s.fps,
-			maxBitrateKbps: s.bitrateMbps * 1000, codec: s.effectiveCodec == .h265 ? .hevc : .h264, hdr: s.hdr)
+			maxBitrateKbps: s.bitrateMbps * 1000, codec: s.effectiveCodec == .h265 ? .hevc : .h264, hdr: s.hdr,
+			microphone: s.microphone && AVAudioApplication.shared.recordPermission == .granted)
 		let stream = NVSTStream(config: config)
 		self.stream = stream
 
@@ -177,8 +182,9 @@ final class StreamSession {
 				try await stream.start()
 				guard let self, self.streamID == id else { return }
 				self.state = .streaming
-				self.audio.start(stream: stream)
+				self.audio.start(stream: stream, mic: stream.config.microphone && stream.microphoneAvailable)
 				self.audio.muted = self.paused
+				self.applyMicState()
 				self.sendPad()
 				UIApplication.shared.isIdleTimerDisabled = true
 			} catch {
@@ -211,6 +217,7 @@ final class StreamSession {
 		guideRelease = nil
 		heldMouseButtons.removeAll()
 		mouseRemainder = .zero
+		micActive = false
 		audio.stop()
 		stream?.stop()
 		stream = nil
@@ -263,6 +270,7 @@ final class StreamSession {
 		self.paused = paused
 		renderer?.setPaused(paused)
 		audio.muted = paused
+		applyMicState()
 		if paused {
 			releaseInput()
 		} else {
@@ -362,6 +370,21 @@ final class StreamSession {
 		for button in heldMouseButtons { stream?.sendMouseButton(button, pressed: false) }
 		heldMouseButtons.removeAll()
 		mouseRemainder = .zero
+	}
+
+	// MARK: - Microphone
+
+	func toggleMicMuted() {
+		micMuted.toggle()
+		applyMicState()
+	}
+
+	/// Sends mic audio while streaming, unmuted and not paused
+	private func applyMicState() {
+		micActive = state == .streaming && stream != nil && audio.micEnabled
+		let live = micActive && !micMuted && !paused
+		audio.micLive = live
+		stream?.setMicrophoneLive(live)
 	}
 
 	/// Typed on the iPhone keyboard: sent as it's typed, so it works in any text box
