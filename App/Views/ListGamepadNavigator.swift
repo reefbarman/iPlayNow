@@ -4,7 +4,7 @@ import SwiftUI
 /// Lets a game controller drive app screens outside the stream: the d-pad or
 /// left stick moves a selection (up/down, or around a grid), the bottom face
 /// button (A, or ✕ on PlayStation pads) confirms and the right one (B / ○) cancels.
-/// Y (△) and X (□) are free for a screen's own actions.
+/// Y (△), X (□), Menu, View and the shoulder buttons are free for a screen's own actions.
 ///
 /// Uses per-element handlers so it never touches the gamepad-wide
 /// `valueChangedHandler` that `ControllerInput` owns while streaming, and
@@ -20,12 +20,23 @@ final class ListGamepadNavigator {
 	@ObservationIgnored var onTop: (() -> Void)?
 	/// X / □
 	@ObservationIgnored var onLeft: (() -> Void)?
+	/// Menu (☰ / Options)
+	@ObservationIgnored var onMenu: (() -> Void)?
+	/// View (⧉ / Create)
+	@ObservationIgnored var onView: (() -> Void)?
+	/// LB (-1) and RB (+1)
+	@ObservationIgnored var onShoulder: ((Int) -> Void)?
 	/// SF Symbol for the connected controller's confirm button, nil without a controller
 	private(set) var confirmSymbol: String?
 	/// SF Symbol for the connected controller's cancel button, nil without a controller
 	private(set) var cancelSymbol: String?
 	private(set) var topSymbol: String?
 	private(set) var leftSymbol: String?
+	private(set) var menuSymbol: String?
+	/// nil on controllers without a View button
+	private(set) var viewSymbol: String?
+	private(set) var leftShoulderSymbol: String?
+	private(set) var rightShoulderSymbol: String?
 
 	/// The navigator whose handlers are on the controller. Only one screen drives it
 	/// at a time, and a screen going away mustn't clear handlers the next one set.
@@ -55,6 +66,10 @@ final class ListGamepadNavigator {
 		cancelSymbol = nil
 		topSymbol = nil
 		leftSymbol = nil
+		menuSymbol = nil
+		viewSymbol = nil
+		leftShoulderSymbol = nil
+		rightShoulderSymbol = nil
 	}
 
 	func setActive(_ active: Bool) {
@@ -71,6 +86,10 @@ final class ListGamepadNavigator {
 		cancelSymbol = pad.map { Self.symbol($0.buttonB, fallback: playStation ? "circle.circle" : "b.circle") }
 		topSymbol = pad.map { Self.symbol($0.buttonY, fallback: playStation ? "triangle.circle" : "y.circle") }
 		leftSymbol = pad.map { Self.symbol($0.buttonX, fallback: playStation ? "square.circle" : "x.circle") }
+		menuSymbol = pad.map { Self.symbol($0.buttonMenu, fallback: "line.3.horizontal.circle") }
+		viewSymbol = pad?.buttonOptions.map { Self.symbol($0, fallback: "rectangle.on.rectangle.circle") }
+		leftShoulderSymbol = pad.map { Self.symbol($0.leftShoulder, fallback: playStation ? "l1.rectangle.roundedbottom" : "lb.rectangle.roundedbottom") }
+		rightShoulderSymbol = pad.map { Self.symbol($0.rightShoulder, fallback: playStation ? "r1.rectangle.roundedbottom" : "rb.rectangle.roundedbottom") }
 
 		let wanted = active ? next : nil
 		guard wanted !== controller || (wanted != nil && Self.owner !== self) else { return }
@@ -84,6 +103,10 @@ final class ListGamepadNavigator {
 		onRelease(pad.buttonB) { $0.onCancel?() }
 		onRelease(pad.buttonY) { $0.onTop?() }
 		onRelease(pad.buttonX) { $0.onLeft?() }
+		onRelease(pad.buttonMenu) { $0.onMenu?() }
+		if let view = pad.buttonOptions { onRelease(view) { $0.onView?() } }
+		onRelease(pad.leftShoulder) { $0.onShoulder?(-1) }
+		onRelease(pad.rightShoulder) { $0.onShoulder?(1) }
 	}
 
 	/// Fires on release so the press doesn't carry into the stream or the next screen
@@ -114,6 +137,10 @@ final class ListGamepadNavigator {
 			pad.buttonB.pressedChangedHandler = nil
 			pad.buttonX.pressedChangedHandler = nil
 			pad.buttonY.pressedChangedHandler = nil
+			pad.buttonMenu.pressedChangedHandler = nil
+			pad.buttonOptions?.pressedChangedHandler = nil
+			pad.leftShoulder.pressedChangedHandler = nil
+			pad.rightShoulder.pressedChangedHandler = nil
 			Self.owner = nil
 		}
 		controller = nil
@@ -157,6 +184,8 @@ final class ListGamepadNavigator {
 struct GamepadHint: Identifiable {
 	let symbol: String
 	let label: String
+	/// A second button doing the same, e.g. LB and RB for previous and next
+	var pairedSymbol: String?
 	var id: String { label }
 }
 
@@ -169,6 +198,9 @@ struct GamepadHintBar: View {
 			ForEach(hints) { hint in
 				HStack(spacing: 5) {
 					Image(systemName: hint.symbol).imageScale(.large)
+					if let paired = hint.pairedSymbol {
+						Image(systemName: paired).imageScale(.large)
+					}
 					Text(hint.label)
 				}
 			}

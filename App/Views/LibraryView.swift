@@ -62,13 +62,36 @@ struct LibraryView: View {
 
 	/// What each button does for the selected cover
 	private var gamepadHints: [GamepadHint] {
-		guard let confirm = gamepad.confirmSymbol, let game = selectedGame else { return [] }
-		var hints = [GamepadHint(symbol: confirm, label: "Play")]
-		if let top = gamepad.topSymbol { hints.append(GamepadHint(symbol: top, label: "Video settings")) }
-		if game.ownedVariants.count > 1, let left = gamepad.leftSymbol {
-			hints.append(GamepadHint(symbol: left, label: "Choose store"))
+		guard let confirm = gamepad.confirmSymbol else { return [] }
+		var hints: [GamepadHint] = []
+		if let game = selectedGame {
+			hints.append(GamepadHint(symbol: confirm, label: "Play"))
+			if let top = gamepad.topSymbol { hints.append(GamepadHint(symbol: top, label: "Video")) }
+			if game.ownedVariants.count > 1, let left = gamepad.leftSymbol {
+				hints.append(GamepadHint(symbol: left, label: "Choose store"))
+			}
 		}
+		if let view = gamepad.viewSymbol { hints.append(GamepadHint(symbol: view, label: "Sort")) }
+		if stores.count > 1, let lb = gamepad.leftShoulderSymbol {
+			hints.append(GamepadHint(symbol: lb, label: storeFilter.isEmpty ? "All stores" : storeFilter,
+				pairedSymbol: gamepad.rightShoulderSymbol))
+		}
+		if let menu = gamepad.menuSymbol { hints.append(GamepadHint(symbol: menu, label: "Settings")) }
 		return hints
+	}
+
+	/// LB and RB step through All stores and each store you own something on
+	private func stepStoreFilter(_ step: Int) {
+		let options = [""] + stores
+		let index = options.firstIndex(of: storeFilter) ?? 0
+		storeFilter = options[(index + step + options.count) % options.count]
+	}
+
+	/// The View button moves to the next sort order
+	private func nextSort() {
+		let all = LibrarySort.allCases
+		let index = all.firstIndex(of: sort) ?? all.startIndex
+		sort = all[(all.index(after: index) == all.endIndex) ? all.startIndex : all.index(after: index)]
 	}
 
 	private var gamepadActive: Bool {
@@ -133,6 +156,9 @@ struct LibraryView: View {
 			gamepad.onLeft = {
 				if let game = selectedGame, game.ownedVariants.count > 1 { choosingStore = game }
 			}
+			gamepad.onMenu = { showingSettings = true }
+			gamepad.onView = { nextSort() }
+			gamepad.onShoulder = { stepStoreFilter($0) }
 			gamepad.start()
 			gamepad.setActive(gamepadActive)
 			ensureSelection()
@@ -198,7 +224,7 @@ struct LibraryView: View {
 			.padding(.bottom, 24)
 			if gamepad.confirmSymbol == nil {
 				// With a controller, the hint bar covers this
-				Text("Press and hold a cover for its video settings, or to choose a store when you own it on more than one.")
+				Text("Press and hold a cover for its video settings, or to choose a store when you own it on more than one. With a controller, the bar along the bottom shows what each button does.")
 					.font(.footnote)
 					.foregroundStyle(.secondary)
 					.frame(maxWidth: .infinity)

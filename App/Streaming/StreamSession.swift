@@ -277,8 +277,21 @@ final class StreamSession {
 
 	// MARK: - Input (main thread)
 
+	/// The stream menu is open: the controller drives the menu, so the game sees nothing held
+	private var inputHeld = false
+
+	func setInputHeld(_ held: Bool) {
+		guard held != inputHeld else { return }
+		inputHeld = held
+		if held { releaseInput() }
+	}
+
 	private func sendPad() {
 		guard let stream else { return }
+		guard !inputHeld else {
+			stream.send(NVSTGamepad())
+			return
+		}
 		var pad = physicalPad
 		pad.buttons |= virtualPad.buttons
 		if guideRelease != nil { pad.buttons |= NVSTGamepad.guide }

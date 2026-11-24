@@ -13,15 +13,53 @@ struct StreamSettingsForm: View {
 		}
 
 		Section {
-			SettingsLink(title: "Display", systemImage: "tv", summary: settings.displaySummary) {
-				DisplaySettingsPage(settings: $settings)
+			SettingsLink(title: "Display", systemImage: "tv", summary: settings.displaySummary, page: .display)
+			SettingsLink(title: "Controller", systemImage: "gamecontroller", summary: settings.controllerSummary,
+				page: .controller)
+			SettingsLink(title: "Virtual controls", systemImage: "hand.tap", summary: settings.virtualControlsSummary,
+				page: .virtualControls)
+		}
+	}
+
+	/// The rows above, for a controller
+	static func gamepadRows(_ settings: Binding<StreamSettings>, showsVideo: Bool = true,
+		open: @escaping (SettingsPage) -> Void) -> [GamepadRow] {
+		(showsVideo ? VideoSettingsSection.gamepadRows(settings) : [])
+			+ [SettingsPage.display, .controller, .virtualControls].map { page in
+				GamepadRow.link(page.rowID) { open(page) }
 			}
-			SettingsLink(title: "Controller", systemImage: "gamecontroller", summary: settings.controllerSummary) {
-				ControllerSettingsPage(settings: $settings)
+	}
+}
+
+/// A settings page under the main list. Pushed by value, so a controller can open one too.
+enum SettingsPage: Hashable {
+	case display, controller, gyroAim, virtualControls
+
+	var rowID: String { "page.\(self)" }
+}
+
+/// The settings pages open in a navigation stack, so a controller can open and leave them
+@Observable
+final class SettingsNavigation {
+	var path: [SettingsPage] = []
+
+	func open(_ page: SettingsPage) { path.append(page) }
+}
+
+extension View {
+	/// Where `SettingsPage` links go. Put on the root of a `NavigationStack(path:)` bound to
+	/// `navigation.path` that shows `StreamSettingsForm`.
+	func settingsPages(_ settings: Binding<StreamSettings>, navigation: SettingsNavigation) -> some View {
+		navigationDestination(for: SettingsPage.self) { page in
+			Group {
+				switch page {
+				case .display: DisplaySettingsPage(settings: settings)
+				case .controller: ControllerSettingsPage(settings: settings)
+				case .gyroAim: GyroAimSettingsPage(settings: settings)
+				case .virtualControls: VirtualControlsSettingsPage(settings: settings)
+				}
 			}
-			SettingsLink(title: "Virtual controls", systemImage: "hand.tap", summary: settings.virtualControlsSummary) {
-				VirtualControlsSettingsPage(settings: $settings)
-			}
+			.environment(navigation)
 		}
 	}
 }
@@ -66,15 +104,15 @@ private extension StreamSettings {
 }
 
 /// A row that opens a settings page. `value` sits on the right, `summary` under the title.
-private struct SettingsLink<Destination: View>: View {
+private struct SettingsLink: View {
 	let title: String
 	let systemImage: String
 	var value: String?
 	var summary: String?
-	@ViewBuilder var destination: () -> Destination
+	let page: SettingsPage
 
 	var body: some View {
-		NavigationLink(destination: destination) {
+		NavigationLink(value: page) {
 			LabeledContent {
 				if let value { Text(value) }
 			} label: {
@@ -88,6 +126,7 @@ private struct SettingsLink<Destination: View>: View {
 				}
 			}
 		}
+		.gamepadRow(page.rowID)
 	}
 }
 
@@ -117,6 +156,25 @@ private extension View {
 	}
 }
 
+/// A pushed settings page driven by a controller while it's on top, with B going back
+private struct GamepadSettingsPage: ViewModifier {
+	let page: SettingsPage
+	let rows: [GamepadRow]
+	@Environment(SettingsNavigation.self) private var navigation
+
+	func body(content: Content) -> some View {
+		content.gamepadForm(rows, active: navigation.path.last == page) {
+			if navigation.path.last == page { navigation.path.removeLast() }
+		}
+	}
+}
+
+private extension View {
+	func gamepadPage(_ page: SettingsPage, _ rows: [GamepadRow]) -> some View {
+		modifier(GamepadSettingsPage(page: page, rows: rows))
+	}
+}
+
 private func multiplier(_ value: Double) -> String {
 	"\(value.formatted(.number.precision(.fractionLength(0...2))))×"
 }
@@ -131,22 +189,37 @@ private struct DisplaySettingsPage: View {
 			set: { settings.upscaling = $0 })
 	}
 
+	private var upscalingOptions: [UpscalingMode] {
+		UpscalingMode.allCases.filter { !$0.usesMetalFX || MetalRenderer.supportsMetalFX }
+	}
+
+	private var rows: [GamepadRow] {
+		var rows = [
+			GamepadRow.picker("picture", $settings.displayMode, DisplayMode.allCases),
+			.picker("upscaling", upscalingSelection, upscalingOptions),
+		]
+		if UIScreen.main.maximumFramesPerSecond > 60 { rows.append(.toggle("120hz", $settings.highRefreshDisplay)) }
+		rows.append(.toggle("framegen", $settings.frameGeneration))
+		rows.append(.picker("stats", $settings.statsMode, StatsMode.allCases))
+		return rows
+	}
+
 	var body: some View {
 		Form {
 			Section {
 				Picker("Picture", selection: $settings.displayMode) {
 					ForEach(DisplayMode.allCases) { Text($0.label).tag($0) }
 				}
+				.gamepadRow("picture")
 			} footer: {
 				Text("Fit shows the whole picture, with black bars where the screen is a different shape to 16:9. Zoom fills the screen and crops the overflow.")
 			}
 
 			Section {
 				Picker("Upscaling", selection: upscalingSelection) {
-					ForEach(UpscalingMode.allCases.filter { !$0.usesMetalFX || MetalRenderer.supportsMetalFX }) {
-						Text($0.label).tag($0)
-					}
+					ForEach(upscalingOptions) { Text($0.label).tag($0) }
 				}
+				.gamepadRow("upscaling")
 			} footer: {
 				if MetalRenderer.supportsMetalFX {
 					Text("MetalFX Spatial enlarges the picture to the screen's resolution. MetalFX 4K enlarges it to 3840×2160 and then scales it down to the screen, which can look smoother but uses more GPU and battery.")
@@ -156,8 +229,10 @@ private struct DisplaySettingsPage: View {
 			Section {
 				if UIScreen.main.maximumFramesPerSecond > 60 {
 					Toggle("120 Hz screen", isOn: $settings.highRefreshDisplay)
+						.gamepadRow("120hz")
 				}
 				Toggle("Frame generation (experimental)", isOn: $settings.frameGeneration)
+					.gamepadRow("framegen")
 			} header: {
 				Text("Smoothness")
 			} footer: {
@@ -171,11 +246,13 @@ private struct DisplaySettingsPage: View {
 				Picker("Stats", selection: $settings.statsMode) {
 					ForEach(StatsMode.allCases) { Text($0.label).tag($0) }
 				}
+				.gamepadRow("stats")
 			} footer: {
 				Text("Stats sit in the black bar above the picture. Simple shows the essentials, Advanced shows everything.")
 			}
 		}
 		.settingsPage("Display")
+		.gamepadPage(.display, rows)
 	}
 }
 
@@ -183,17 +260,29 @@ private struct DisplaySettingsPage: View {
 private struct ControllerSettingsPage: View {
 	@Binding var settings: StreamSettings
 	private static let deviceHasHaptics = CHHapticEngine.capabilitiesForHardware().supportsHaptics
+	@Environment(SettingsNavigation.self) private var navigation
+
+	private var rows: [GamepadRow] {
+		var rows = [GamepadRow.toggle("rumble", $settings.rumble)]
+		if Self.deviceHasHaptics && settings.rumble {
+			rows.append(.picker("haptics", $settings.phoneHaptics, PhoneHaptics.allCases))
+		}
+		rows.append(.link(SettingsPage.gyroAim.rowID) { navigation.open(.gyroAim) })
+		return rows
+	}
 
 	var body: some View {
 		Form {
 			Section {
 				Toggle("Rumble", isOn: $settings.rumble)
+					.gamepadRow("rumble")
 				// iPads have no vibration motor
 				if Self.deviceHasHaptics {
 					Picker("Phone haptics", selection: $settings.phoneHaptics) {
 						ForEach(PhoneHaptics.allCases) { Text($0.label).tag($0) }
 					}
 					.disabled(!settings.rumble)
+					.gamepadRow("haptics")
 				}
 			} header: {
 				Text("Vibration")
@@ -206,9 +295,7 @@ private struct ControllerSettingsPage: View {
 			}
 
 			Section {
-				SettingsLink(title: "Gyro aiming", systemImage: "scope", value: settings.gyroAim.label) {
-					GyroAimSettingsPage(settings: $settings)
-				}
+				SettingsLink(title: "Gyro aiming", systemImage: "scope", value: settings.gyroAim.label, page: .gyroAim)
 			} header: {
 				Text("Motion")
 			} footer: {
@@ -216,6 +303,7 @@ private struct ControllerSettingsPage: View {
 			}
 		}
 		.settingsPage("Controller")
+		.gamepadPage(.controller, rows)
 	}
 }
 
@@ -223,12 +311,28 @@ private struct ControllerSettingsPage: View {
 private struct GyroAimSettingsPage: View {
 	@Binding var settings: StreamSettings
 
+	private var rows: [GamepadRow] {
+		var rows = [GamepadRow.picker("mode", $settings.gyroAim, GyroAimMode.allCases)]
+		guard settings.gyroAim != .off else { return rows }
+		rows += [
+			.picker("turning", $settings.gyroAimTurning, GyroAimTurning.allCases),
+			.slider("sensitivity", $settings.gyroAimSensitivity, 0.25...3, step: 0.05),
+			.slider("vertical", $settings.gyroAimVerticalScale, 0.5...3, step: 0.05),
+			.toggle("invert", $settings.gyroAimInvertY),
+			.slider("deadzone", $settings.gyroAimDeadzone, 0...0.4, step: 0.01),
+			.toggle("perAxis", $settings.gyroAimPerAxisDeadzone),
+			.slider("curve", $settings.gyroAimResponseCurve, 1...3, step: 0.1),
+		]
+		return rows
+	}
+
 	var body: some View {
 		Form {
 			Section {
 				Picker("Gyro aiming", selection: $settings.gyroAim) {
 					ForEach(GyroAimMode.allCases) { Text($0.label).tag($0) }
 				}
+				.gamepadRow("mode")
 			} footer: {
 				Text("Turns the controller's motion (or the phone's, if the controller has none) into right stick movement, on top of the stick itself.")
 			}
@@ -238,11 +342,15 @@ private struct GyroAimSettingsPage: View {
 					Picker("Look left/right by", selection: $settings.gyroAimTurning) {
 						ForEach(GyroAimTurning.allCases) { Text($0.label).tag($0) }
 					}
+					.gamepadRow("turning")
 					LabeledSlider(title: "Gyro sensitivity", value: $settings.gyroAimSensitivity, range: 0.25...3, step: 0.05,
 						valueText: multiplier(settings.gyroAimSensitivity))
+						.gamepadRow("sensitivity")
 					LabeledSlider(title: "Up/down speed", value: $settings.gyroAimVerticalScale, range: 0.5...3, step: 0.05,
 						valueText: multiplier(settings.gyroAimVerticalScale))
+						.gamepadRow("vertical")
 					Toggle("Invert gyro up/down", isOn: $settings.gyroAimInvertY)
+						.gamepadRow("invert")
 				} header: {
 					Text("Aiming")
 				} footer: {
@@ -253,7 +361,9 @@ private struct GyroAimSettingsPage: View {
 				Section {
 					LabeledSlider(title: "Game dead zone", value: $settings.gyroAimDeadzone, range: 0...0.4, step: 0.01,
 						valueText: "\(Int((settings.gyroAimDeadzone * 100).rounded()))%")
+						.gamepadRow("deadzone")
 					Toggle("Dead zone per direction", isOn: $settings.gyroAimPerAxisDeadzone)
+						.gamepadRow("perAxis")
 				} header: {
 					Text("Match the game")
 				} footer: {
@@ -264,12 +374,14 @@ private struct GyroAimSettingsPage: View {
 				Section {
 					LabeledSlider(title: "Fine aim boost", value: $settings.gyroAimResponseCurve, range: 1...3, step: 0.1,
 						valueText: settings.gyroAimResponseCurve.formatted(.number.precision(.fractionLength(1))))
+						.gamepadRow("curve")
 				} footer: {
 					Text("Undoes games slowing down small stick movements. Raise it if small corrections feel sluggish, lower it if they overshoot. 1 turns it off.")
 				}
 			}
 		}
 		.settingsPage("Gyro Aiming")
+		.gamepadPage(.gyroAim, rows)
 	}
 }
 
@@ -277,12 +389,24 @@ private struct GyroAimSettingsPage: View {
 private struct VirtualControlsSettingsPage: View {
 	@Binding var settings: StreamSettings
 
+	private var rows: [GamepadRow] {
+		var rows = [GamepadRow.picker("show", $settings.virtualControls, VirtualControlsMode.allCases)]
+		guard settings.virtualControls != .never else { return rows }
+		rows += [
+			.picker("size", $settings.controlsSize, ControlsSize.allCases),
+			.slider("opacity", $settings.controlsOpacity, 0.2...1, step: 0.05),
+			.toggle("fixedSticks", $settings.fixedSticks),
+		]
+		return rows
+	}
+
 	var body: some View {
 		Form {
 			Section {
 				Picker("Show", selection: $settings.virtualControls) {
 					ForEach(VirtualControlsMode.allCases) { Text($0.label).tag($0) }
 				}
+				.gamepadRow("show")
 			} footer: {
 				Text("Auto shows virtual controls when no supported controller is connected.")
 			}
@@ -292,59 +416,49 @@ private struct VirtualControlsSettingsPage: View {
 					Picker("Size", selection: $settings.controlsSize) {
 						ForEach(ControlsSize.allCases) { Text($0.label).tag($0) }
 					}
+					.gamepadRow("size")
 					LabeledSlider(title: "Opacity", value: $settings.controlsOpacity, range: 0.2...1, step: 0.05,
 						valueText: "\(Int((settings.controlsOpacity * 100).rounded()))%")
+						.gamepadRow("opacity")
 				}
 
 				Section {
 					Toggle("Fixed sticks", isOn: $settings.fixedSticks)
+						.gamepadRow("fixedSticks")
 				} footer: {
 					Text("Sticks normally start wherever your thumb lands in the lower half. Fixed sticks stay in one spot on each side instead, and a touch near one moves it straight away.")
 				}
 			}
 		}
 		.settingsPage("Virtual Controls")
+		.gamepadPage(.virtualControls, rows)
 	}
 }
 
 /// Resolution, frame rate, bitrate, codec and HDR: what to ask GeForce NOW for. A game can have its own.
 struct VideoSettingsSection: View {
-	/// A row a controller can select
-	enum Row: CaseIterable { case resolution, fps, bitrate, codec, hdr }
-
 	@Binding var settings: StreamSettings
 	var customGameName: String?
-	/// The controller's row, nil without a controller
-	var highlighted: Row?
 
-	/// The rows a controller moves through, as shown
-	static func rows(for settings: StreamSettings) -> [Row] {
-		Row.allCases.filter { row in
-			switch row {
-			case .codec: !settings.hdr
-			case .hdr: StreamSettings.screenSupportsHDR || settings.hdr
-			default: true
-			}
+	/// The rows below, for a controller
+	static func gamepadRows(_ settings: Binding<StreamSettings>) -> [GamepadRow] {
+		let s = settings.wrappedValue
+		var rows = [
+			GamepadRow.picker("video.resolution", settings.resolution, StreamResolution.allCases),
+			.picker("video.fps", settings.fps, StreamSettings.fpsOptions),
+			GamepadRow(id: "video.bitrate", adjust: { step in
+				let mbps = settings.wrappedValue.bitrateMbps + step * 5
+				settings.wrappedValue.bitrateMbps = min(StreamSettings.maxBitrateMbps, max(5, mbps))
+			}),
+		]
+		if !s.hdr {
+			let flip = { settings.wrappedValue.codec = settings.wrappedValue.effectiveCodec == .h265 ? .h264 : .h265 }
+			rows.append(GamepadRow(id: "video.codec", confirmLabel: "Change", activate: flip, adjust: { _ in flip() }))
 		}
-	}
-
-	/// Left and right step through a row's values; a step of 0 (A) flips codec and HDR
-	static func adjust(_ row: Row, by step: Int, in s: inout StreamSettings) {
-		func stepped<T: Equatable>(_ value: T, in options: [T]) -> T {
-			guard let i = options.firstIndex(of: value) else { return value }
-			return options[min(max(i + step, 0), options.count - 1)]
+		if StreamSettings.screenSupportsHDR || s.hdr {
+			rows.append(.toggle("video.hdr", settings.hdr))
 		}
-		switch row {
-		case .resolution: s.resolution = stepped(s.resolution, in: StreamResolution.allCases)
-		case .fps: s.fps = stepped(s.fps, in: StreamSettings.fpsOptions)
-		case .bitrate: s.bitrateMbps = min(StreamSettings.maxBitrateMbps, max(5, s.bitrateMbps + step * 5))
-		case .codec: s.codec = s.effectiveCodec == .h265 ? .h264 : .h265
-		case .hdr: s.hdr.toggle()
-		}
-	}
-
-	private func background(_ row: Row) -> Color? {
-		highlighted == row ? Color.accentColor.opacity(0.18) : nil
+		return rows
 	}
 
 	var body: some View {
@@ -352,11 +466,11 @@ struct VideoSettingsSection: View {
 			Picker("Resolution", selection: $settings.resolution) {
 				ForEach(StreamResolution.allCases) { Text($0.label).tag($0) }
 			}
-			.listRowBackground(background(.resolution))
+			.gamepadRow("video.resolution")
 			Picker("Frame rate", selection: $settings.fps) {
 				ForEach(StreamSettings.fpsOptions.reversed(), id: \.self) { Text("\($0) fps").tag($0) }
 			}
-			.listRowBackground(background(.fps))
+			.gamepadRow("video.fps")
 			VStack(alignment: .leading) {
 				HStack {
 					Text("Maximum bitrate")
@@ -366,15 +480,15 @@ struct VideoSettingsSection: View {
 				Slider(value: Binding(get: { Double(settings.bitrateMbps) }, set: { settings.bitrateMbps = Int($0) }),
 					in: 5...Double(StreamSettings.maxBitrateMbps), step: 5)
 			}
-			.listRowBackground(background(.bitrate))
+			.gamepadRow("video.bitrate")
 			Picker("Codec", selection: Binding(get: { settings.effectiveCodec }, set: { settings.codec = $0 })) {
 				ForEach(VideoCodecChoice.allCases) { Text($0.label).tag($0) }
 			}
 			.disabled(settings.hdr)
-			.listRowBackground(background(.codec))
+			.gamepadRow("video.codec")
 			if StreamSettings.screenSupportsHDR || settings.hdr {
 				Toggle("HDR", isOn: $settings.hdr)
-					.listRowBackground(background(.hdr))
+					.gamepadRow("video.hdr")
 			}
 		} header: {
 			Text(customGameName.map { "Video for \($0)" } ?? "Video")
@@ -415,49 +529,14 @@ struct VideoSettingsSummary: View {
 struct GameSettingsView: View {
 	let game: GFNGame
 
-	/// A row a controller can select
-	enum Row: Hashable {
-		case custom
-		case video(VideoSettingsSection.Row)
-	}
-
 	@Environment(GameSettingsStore.self) private var games
 	@Environment(SettingsStore.self) private var store
 	@Environment(\.dismiss) private var dismiss
-	@State private var gamepad = ListGamepadNavigator()
-	@State private var row = Row.custom
 
-	private var rows: [Row] {
-		guard games.settings(for: game.id) != nil else { return [.custom] }
-		return [.custom] + VideoSettingsSection.rows(for: settings.wrappedValue).map(Row.video)
-	}
-
-	/// The controller's row, nil without a controller
-	private var highlighted: Row? {
-		gamepad.confirmSymbol == nil ? nil : row
-	}
-
-	private var highlightedVideoRow: VideoSettingsSection.Row? {
-		if case .video(let video) = highlighted { video } else { nil }
-	}
-
-	private func move(_ step: Int) {
-		let list = rows
-		let index = list.firstIndex(of: row) ?? 0
-		row = list[min(max(index + step, 0), list.count - 1)]
-	}
-
-	private func change(by step: Int) {
-		switch row {
-		case .custom:
-			custom.wrappedValue.toggle()
-		case .video(let video):
-			var s = settings.wrappedValue
-			VideoSettingsSection.adjust(video, by: step, in: &s)
-			settings.wrappedValue = s
-		}
-		// Turning HDR on hides Codec; turning custom off hides the rest
-		if !rows.contains(row) { row = rows.last ?? .custom }
+	private var rows: [GamepadRow] {
+		let toggle = GamepadRow.toggle("custom", custom)
+		guard games.settings(for: game.id) != nil else { return [toggle] }
+		return [toggle] + VideoSettingsSection.gamepadRows(settings)
 	}
 
 	private var custom: Binding<Bool> {
@@ -481,12 +560,12 @@ struct GameSettingsView: View {
 			Form {
 				Section {
 					Toggle("Custom video settings", isOn: custom)
-						.listRowBackground(highlighted == .custom ? Color.accentColor.opacity(0.18) : nil)
+						.gamepadRow("custom")
 				} footer: {
 					Text("Give \(game.title) its own resolution, frame rate, bitrate, codec and HDR. Display and controller settings are always shared.")
 				}
 				if games.settings(for: game.id) != nil {
-					VideoSettingsSection(settings: settings, customGameName: game.title, highlighted: highlightedVideoRow)
+					VideoSettingsSection(settings: settings, customGameName: game.title)
 				}
 			}
 			.navigationTitle(game.title)
@@ -494,32 +573,8 @@ struct GameSettingsView: View {
 			.toolbar {
 				ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
 			}
-			.safeAreaInset(edge: .bottom) {
-				if let confirm = gamepad.confirmSymbol, let cancel = gamepad.cancelSymbol {
-					GamepadHintBar(hints: [
-						GamepadHint(symbol: "dpad", label: "Move"),
-						GamepadHint(symbol: "arrow.left.and.right", label: "Change"),
-						GamepadHint(symbol: confirm, label: "Toggle"),
-						GamepadHint(symbol: cancel, label: "Done"),
-					])
-				}
-			}
+			.gamepadForm(rows, backLabel: "Done") { dismiss() }
 		}
-		.onAppear {
-			gamepad.onMove = { direction in
-				switch direction {
-				case .up: move(-1)
-				case .down: move(1)
-				case .left: change(by: -1)
-				case .right: change(by: 1)
-				}
-			}
-			gamepad.onConfirm = { change(by: 0) }
-			gamepad.onCancel = { dismiss() }
-			gamepad.start()
-			gamepad.setActive(true)
-		}
-		.onDisappear { gamepad.stop() }
 	}
 }
 
@@ -529,10 +584,33 @@ struct SettingsView: View {
 	@Environment(GFNAccountStore.self) private var accounts
 	@Environment(\.dismiss) private var dismiss
 	@State private var confirmSignOut = false
+	/// A controller signs out with a second press instead of the dialog
+	@State private var signOutArmed = false
+	@State private var navigation = SettingsNavigation()
+
+	private func signOut() {
+		accounts.signOut()
+		GFNLibrary.clearCache()
+		dismiss()
+	}
+
+	private var rows: [GamepadRow] {
+		var rows: [GamepadRow] = []
+		if accounts.account != nil {
+			rows.append(GamepadRow(id: "signOut", confirmLabel: signOutArmed ? "Confirm sign out" : "Sign out", activate: {
+				if signOutArmed { signOut() } else { signOutArmed = true }
+			}))
+		}
+		return rows + StreamSettingsForm.gamepadRows(settingsBinding) { navigation.open($0) }
+	}
+
+	private var settingsBinding: Binding<StreamSettings> {
+		Binding(get: { store.settings }, set: { store.settings = $0 })
+	}
 
 	var body: some View {
-		@Bindable var store = store
-		NavigationStack {
+		@Bindable var navigation = navigation
+		NavigationStack(path: $navigation.path) {
 			Form {
 				if let account = accounts.account {
 					Section {
@@ -542,26 +620,32 @@ struct SettingsView: View {
 						}
 						LabeledContent("Membership", value: account.tierName ?? "Unknown")
 						LabeledContent("Provider", value: account.provider.displayName)
-						Button("Sign out", role: .destructive) { confirmSignOut = true }
+						Button(signOutArmed ? "Press again to sign out" : "Sign out", role: .destructive) {
+							confirmSignOut = true
+						}
+						.gamepadRow("signOut")
 					} header: {
 						Text("Account")
 					}
 				}
 
-				StreamSettingsForm(settings: $store.settings)
+				StreamSettingsForm(settings: settingsBinding)
 			}
 			.navigationTitle("Settings")
 			.navigationBarTitleDisplayMode(.inline)
 			.toolbar {
 				ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
 			}
+			.settingsPages(settingsBinding, navigation: navigation)
+			.gamepadForm(rows, backLabel: "Done", active: navigation.path.isEmpty && !confirmSignOut) { dismiss() }
 			.task { await accounts.refreshTier() }
+			.task(id: signOutArmed) {
+				guard signOutArmed else { return }
+				try? await Task.sleep(for: .seconds(3))
+				signOutArmed = false
+			}
 			.confirmationDialog("Sign out of GeForce NOW?", isPresented: $confirmSignOut, titleVisibility: .visible) {
-				Button("Sign out", role: .destructive) {
-					accounts.signOut()
-					GFNLibrary.clearCache()
-					dismiss()
-				}
+				Button("Sign out", role: .destructive, action: signOut)
 			}
 		}
 	}

@@ -30,6 +30,9 @@ struct StreamView: View {
 	@State private var showHeatWarning = false
 	/// The corner hints show once per stream screen
 	@State private var hintShown = false
+	@State private var menuNavigation = SettingsNavigation()
+	/// A controller quits with a second press of A
+	@State private var quitArmed = false
 
 	/// The shared settings with this game's own video settings on top
 	private var settings: StreamSettings { settingsStore.settings.applying(gameSettings.settings(for: game.id)) }
@@ -92,6 +95,13 @@ struct StreamView: View {
 			if phase == .active { refreshControllerPresence() } else { session?.setPaused(true) }
 		}
 		.sheet(isPresented: $showMenu) { menu }
+		.onChange(of: showMenu) { _, open in
+			session?.setInputHeld(open)
+			if !open {
+				menuNavigation.path.removeAll()
+				quitArmed = false
+			}
+		}
 	}
 
 	private var content: some View {
@@ -535,16 +545,33 @@ struct StreamView: View {
 		}
 	}
 
+	private var menuSettings: Binding<StreamSettings> {
+		Binding(get: { settingsStore.settings }, set: { settingsStore.settings = $0 })
+	}
+
+	private func quit() {
+		showMenu = false
+		dismiss()
+	}
+
+	private var menuRows: [GamepadRow] {
+		[
+			GamepadRow(id: "resume", confirmLabel: "Resume", activate: { showMenu = false }),
+			GamepadRow(id: "quit", confirmLabel: quitArmed ? "Confirm quit" : "Quit", activate: {
+				if quitArmed { quit() } else { quitArmed = true }
+			}),
+		] + StreamSettingsForm.gamepadRows(menuSettings, showsVideo: false) { menuNavigation.open($0) }
+	}
+
 	private var menu: some View {
-		@Bindable var settingsStore = settingsStore
-		return NavigationStack {
+		@Bindable var menuNavigation = menuNavigation
+		return NavigationStack(path: $menuNavigation.path) {
 			Form {
 				Section {
 					Button("Resume") { showMenu = false }
-					Button("Quit game", role: .destructive) {
-						showMenu = false
-						dismiss()
-					}
+						.gamepadRow("resume")
+					Button(quitArmed ? "Press again to quit" : "Quit game", role: .destructive, action: quit)
+						.gamepadRow("quit")
 				} footer: {
 					Text("Quitting ends the session on GeForce NOW.")
 				}
@@ -567,10 +594,17 @@ struct StreamView: View {
 					VideoSettingsSummary(settings: session.streamSettings, stats: session.stats,
 						customGameName: gameSettings.settings(for: game.id) != nil ? game.title : nil)
 				}
-				StreamSettingsForm(settings: $settingsStore.settings, showsVideo: false)
+				StreamSettingsForm(settings: menuSettings, showsVideo: false)
 			}
 			.navigationTitle(game.title)
 			.navigationBarTitleDisplayMode(.inline)
+			.settingsPages(menuSettings, navigation: menuNavigation)
+			.gamepadForm(menuRows, backLabel: "Resume", active: menuNavigation.path.isEmpty) { showMenu = false }
+			.task(id: quitArmed) {
+				guard quitArmed else { return }
+				try? await Task.sleep(for: .seconds(3))
+				quitArmed = false
+			}
 		}
 	}
 }
