@@ -14,6 +14,10 @@ struct StreamStats: Equatable {
 	/// Packets lost in the last second, and since connecting
 	var packetsLost = 0
 	var totalPacketsLost = 0
+	/// Share of video packets lost in the last second, 0...1
+	var packetLoss: Double = 0
+	/// Frames that never reached the screen since connecting
+	var lostFrames = 0
 	var controller: String?
 	/// The screen's refresh rate, 0 if unknown
 	var displayHz: Double = 0
@@ -57,6 +61,19 @@ final class StreamSession {
 	/// The mic is on for this stream: the rig accepted it and the phone is capturing
 	private(set) var micActive = false
 	private(set) var micMuted = false
+	/// Check connection: running, or its verdict waiting to be read
+	private(set) var connectionCheck: ConnectionCheck?
+	private(set) var connectionCheckResult: ConnectionCheckResult?
+	/// How each connection went, for Auto bitrate (one per connect, so a reconnect adds one)
+	@ObservationIgnored private(set) var qualityReports: [StreamQualityReport] = []
+	/// The bitrate the current connection started with (Play Again changes `streamSettings` first)
+	@ObservationIgnored private var qualityBitrate = 0
+	@ObservationIgnored private var qualityStreamingSeconds = 0
+	@ObservationIgnored private var qualitySeconds = 0
+	@ObservationIgnored private var qualityLossSum: Double = 0
+	@ObservationIgnored private var qualityPeak: Double = 0
+	@ObservationIgnored private var qualityLostAtStart = 0
+	@ObservationIgnored private var qualityLost = 0
 
 	let launch: GFNLaunch
 	var game: GFNGame { launch.game }
@@ -178,6 +195,13 @@ final class StreamSession {
 		lastSkipped = renderer.skippedFrames
 		lastRepeated = renderer.repeatedFrames
 		lastStats = nil
+		qualityBitrate = s.bitrateMbps
+		qualityStreamingSeconds = 0
+		qualitySeconds = 0
+		qualityLossSum = 0
+		qualityPeak = 0
+		qualityLostAtStart = 0
+		qualityLost = 0
 
 		stream.onFrame = { [weak renderer] frame in renderer?.display(frame) }
 		let feedback = input.feedback
@@ -303,6 +327,9 @@ final class StreamSession {
 	}
 
 	private func teardown() {
+		finishQualityReport()
+		// A new connection starts fresh counters, so a check in progress can't carry on
+		connectionCheck = nil
 		streamID &+= 1
 		input.stop()
 		physicalPad = NVSTGamepad()
@@ -552,6 +579,9 @@ final class StreamSession {
 		s.pingMs = n.pingMs
 		s.packetsLost = max(0, n.packetsLost - last.packetsLost)
 		s.totalPacketsLost = n.packetsLost
+		let received = max(0, n.packetsReceived - last.packetsReceived)
+		s.packetLoss = received + s.packetsLost > 0 ? Double(s.packetsLost) / Double(received + s.packetsLost) : 0
+		s.lostFrames = n.framesLost
 		s.controller = input.controllerName
 		if let renderer {
 			s.displayHz = renderer.displayHz
@@ -569,5 +599,60 @@ final class StreamSession {
 			lastRepeated = renderer.repeatedFrames
 		}
 		stats = s
+		sampleQuality(s)
+		sampleConnectionCheck(s)
+	}
+
+	// MARK: - Check connection
+
+	/// Watches the next few seconds of the stream, then suggests a bitrate for next time
+	func startConnectionCheck() {
+		guard state == .streaming else { return }
+		connectionCheckResult = nil
+		connectionCheck = ConnectionCheck()
+	}
+
+	func dismissConnectionCheck() {
+		connectionCheck = nil
+		connectionCheckResult = nil
+	}
+
+	private func sampleConnectionCheck(_ stats: StreamStats) {
+		// Paused (folded, another app) or mid-reconnect: nothing useful to measure
+		guard var check = connectionCheck, state == .streaming, !paused else { return }
+		check.add(stats)
+		if check.isComplete {
+			let result = check.result(requested: streamSettings.bitrateMbps)
+			log.notice("Connection check: \(result.title, privacy: .public). \(result.detail, privacy: .public)")
+			connectionCheck = nil
+			connectionCheckResult = result
+		} else {
+			connectionCheck = check
+		}
+	}
+
+	// MARK: - Auto bitrate
+
+	/// Seconds after connecting that are left out: the start can be rough on any network
+	private static let qualityWarmupSeconds = 5
+
+	private func sampleQuality(_ s: StreamStats) {
+		guard state == .streaming, !paused else { return }
+		qualityStreamingSeconds += 1
+		if qualityStreamingSeconds == Self.qualityWarmupSeconds { qualityLostAtStart = s.lostFrames }
+		guard qualityStreamingSeconds > Self.qualityWarmupSeconds else { return }
+		qualitySeconds += 1
+		qualityLossSum += s.packetLoss
+		qualityPeak = max(qualityPeak, s.bitrateMbps)
+		qualityLost = s.lostFrames
+	}
+
+	private func finishQualityReport() {
+		guard qualitySeconds > 0 else { return }
+		qualityReports.append(StreamQualityReport(
+			bitrateMbps: qualityBitrate, seconds: qualitySeconds,
+			averageLoss: qualityLossSum / Double(qualitySeconds),
+			lostFrames: max(0, qualityLost - qualityLostAtStart), peakMbps: qualityPeak))
+		qualitySeconds = 0
 	}
 }

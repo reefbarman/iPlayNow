@@ -524,9 +524,10 @@ private struct AudioSettingsPage: View {
 struct VideoSettingsSection: View {
 	@Binding var settings: StreamSettings
 	var customGameName: String?
+	@Environment(BitrateMemory.self) private var bitrateMemory
 
-	/// The rows below, for a controller
-	static func gamepadRows(_ settings: Binding<StreamSettings>) -> [GamepadRow] {
+	/// The rows below, for a controller. A game's own settings have no Auto bitrate.
+	static func gamepadRows(_ settings: Binding<StreamSettings>, forGame: Bool = false) -> [GamepadRow] {
 		let s = settings.wrappedValue
 		var rows = [
 			GamepadRow.picker("video.resolution", settings.resolution, StreamResolution.allCases),
@@ -536,6 +537,9 @@ struct VideoSettingsSection: View {
 				settings.wrappedValue.bitrateMbps = min(StreamSettings.maxBitrateMbps, max(5, mbps))
 			}),
 		]
+		if !forGame {
+			rows.append(.toggle("video.autoBitrate", settings.autoBitrate))
+		}
 		if !s.hdr {
 			let flip = { settings.wrappedValue.codec = settings.wrappedValue.effectiveCodec == .h265 ? .h264 : .h265 }
 			rows.append(GamepadRow(id: "video.codec", confirmLabel: "Change", activate: flip, adjust: { _ in flip() }))
@@ -558,7 +562,7 @@ struct VideoSettingsSection: View {
 			.gamepadRow("video.fps")
 			VStack(alignment: .leading) {
 				HStack {
-					Text("Maximum bitrate")
+					Text(customGameName == nil && settings.autoBitrate ? "Starting bitrate" : "Maximum bitrate")
 					Spacer()
 					Text("\(settings.bitrateMbps) Mbps").foregroundStyle(.secondary).monospacedDigit()
 				}
@@ -566,6 +570,13 @@ struct VideoSettingsSection: View {
 					in: 5...Double(StreamSettings.maxBitrateMbps), step: 5)
 			}
 			.gamepadRow("video.bitrate")
+			if customGameName == nil {
+				Toggle("Auto bitrate", isOn: $settings.autoBitrate)
+					.gamepadRow("video.autoBitrate")
+				if settings.autoBitrate && !bitrateMemory.entries.isEmpty {
+					Button("Forget learned bitrates", role: .destructive) { bitrateMemory.forgetAll() }
+				}
+			}
 			Picker("Codec", selection: Binding(get: { settings.effectiveCodec }, set: { settings.codec = $0 })) {
 				ForEach(VideoCodecChoice.allCases) { Text($0.label).tag($0) }
 			}
@@ -579,6 +590,9 @@ struct VideoSettingsSection: View {
 			Text(customGameName.map { "Video for \($0)" } ?? "Video")
 		} footer: {
 			Text("Your membership decides the most GeForce NOW will stream. 1440p, 4K, 120 fps and HDR need Ultimate, and HDR needs H.265 and a game that supports it. These can't change during a game.")
+			if customGameName == nil {
+				Text("Auto bitrate learns the bitrate that works on each Wi-Fi network, starting from the one above. After a clean game it tries a little more next time, and after a game that dropped video it uses less. On mobile data, and for games with their own video settings, the bitrate above is used as is.")
+			}
 			if customGameName == nil {
 				Text("To give a game its own video settings, press and hold its cover and tap Video settings, or select it with a controller and press \(ControllerStyle.current.y).")
 			}
@@ -621,7 +635,7 @@ struct GameSettingsView: View {
 	private var rows: [GamepadRow] {
 		let toggle = GamepadRow.toggle("custom", custom)
 		guard games.settings(for: game.id) != nil else { return [toggle] }
-		return [toggle] + VideoSettingsSection.gamepadRows(settings)
+		return [toggle] + VideoSettingsSection.gamepadRows(settings, forGame: true)
 	}
 
 	private var custom: Binding<Bool> {

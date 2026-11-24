@@ -203,6 +203,8 @@ struct StreamSettings: Codable, Equatable {
 	var touchMouse: Bool = true
 	/// Send the phone's mic to the game for game and party chat. Fixed when a stream starts.
 	var microphone: Bool = false
+	/// Learn the bitrate that works on each Wi-Fi network (BitrateMemory). Used when a game starts.
+	var autoBitrate: Bool = true
 	/// Keep a ProMotion screen at 120 Hz while streaming, so frames wait less for the next refresh
 	var highRefreshDisplay: Bool = true
 	/// Experimental: make an in-between frame for each pair of real ones (FrameGen.metal)
@@ -266,6 +268,7 @@ struct StreamSettings: Codable, Equatable {
 		fixedSticks = try c.decodeIfPresent(Bool.self, forKey: .fixedSticks) ?? d.fixedSticks
 		touchMouse = try c.decodeIfPresent(Bool.self, forKey: .touchMouse) ?? d.touchMouse
 		microphone = try c.decodeIfPresent(Bool.self, forKey: .microphone) ?? d.microphone
+		autoBitrate = try c.decodeIfPresent(Bool.self, forKey: .autoBitrate) ?? d.autoBitrate
 		highRefreshDisplay = try c.decodeIfPresent(Bool.self, forKey: .highRefreshDisplay) ?? d.highRefreshDisplay
 		frameGeneration = try c.decodeIfPresent(Bool.self, forKey: .frameGeneration) ?? d.frameGeneration
 	}

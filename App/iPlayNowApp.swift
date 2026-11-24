@@ -10,6 +10,7 @@ struct iPlayNowApp: App {
 	@State private var accounts = GFNAccountStore()
 	@State private var settings = SettingsStore()
 	@State private var gameSettings = GameSettingsStore()
+	@State private var bitrateMemory = BitrateMemory()
 
 	var body: some Scene {
 		WindowGroup {
@@ -17,6 +18,7 @@ struct iPlayNowApp: App {
 				.environment(accounts)
 				.environment(settings)
 				.environment(gameSettings)
+				.environment(bitrateMemory)
 				.preferredColorScheme(.dark)
 				.background {
 					// Track the window shape so orientation follows fold/unfold

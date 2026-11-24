@@ -102,6 +102,10 @@ public struct NVSTStats: Sendable {
 	public var framesDecoded: Int
 	public var bytesReceived: Int
 	public var packetsLost: Int
+	/// Video packets that arrived, for a loss rate alongside `packetsLost`
+	public var packetsReceived: Int
+	/// Frames that never reached the screen: abandoned half-assembled, or failed to decode
+	public var framesLost: Int
 	public var width: Int
 	public var height: Int
 	public var decodeMs: Double
@@ -824,6 +828,8 @@ actor NVSTRunner {
 		let size = (decoder.decodedResolution ?? "").split(separator: "x").compactMap { Int($0) }
 		events.stats(NVSTStats(framesDecoded: Int(clamping: decoded), bytesReceived: Int(clamping: counters.bytesReceived),
 			packetsLost: Int(clamping: stats.finalizedLossPackets),
+			packetsReceived: Int(clamping: stats.authenticatedPackets),
+			framesLost: Int(clamping: stats.abandonedFrames &+ decoder.failedFrameCount),
 			width: size.count == 2 ? size[0] : 0, height: size.count == 2 ? size[1] : 0,
 			decodeMs: pipeline.snapshot.decodeP50Milliseconds, pingMs: max(0, ping)))
 	}

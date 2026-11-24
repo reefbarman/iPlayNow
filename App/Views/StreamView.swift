@@ -8,6 +8,7 @@ struct StreamView: View {
 	@Environment(SettingsStore.self) private var settingsStore
 	@Environment(GameSettingsStore.self) private var gameSettings
 	@Environment(GFNAccountStore.self) private var accounts
+	@Environment(BitrateMemory.self) private var bitrateMemory
 	@Environment(\.dismiss) private var dismiss
 	@Environment(\.scenePhase) private var scenePhase
 	@State private var session: StreamSession?
@@ -43,8 +44,22 @@ struct StreamView: View {
 	@State private var screenshotState: ScreenshotState?
 	@State private var screenshotError: StreamScreenshot.ScreenshotError?
 
-	/// The shared settings with this game's own video settings on top
-	private var settings: StreamSettings { settingsStore.settings.applying(gameSettings.settings(for: game.id)) }
+	/// Auto bitrate's key for the Wi-Fi network the stream started on (nil on mobile data)
+	@State private var bitrateKey: String?
+
+	/// The bitrate Auto bitrate has learned for this network. Not for games with their own video settings.
+	private var learnedBitrate: Int? {
+		guard settingsStore.settings.autoBitrate, gameSettings.settings(for: game.id) == nil,
+			let bitrateKey else { return nil }
+		return bitrateMemory.bitrate(for: bitrateKey)
+	}
+
+	/// The shared settings with this game's own video settings on top, and any learned bitrate
+	private var settings: StreamSettings {
+		var settings = settingsStore.settings.applying(gameSettings.settings(for: game.id))
+		if let learnedBitrate { settings.bitrateMbps = learnedBitrate }
+		return settings
+	}
 
 	/// No controller and no choice yet, so the stream waits on the no-controller screen.
 	/// Always showing virtual controls is already a choice.
@@ -164,6 +179,15 @@ struct StreamView: View {
 				overlay(for: session)
 			}
 
+			if let session, session.state == .streaming, !showMenu, !folded, !portrait {
+				if let check = session.connectionCheck {
+					connectionCheckProgress(check, session: session)
+				} else if let result = session.connectionCheckResult {
+					connectionCheckResult(result, session: session)
+						.frame(maxWidth: .infinity, maxHeight: .infinity)
+				}
+			}
+
 			if showSettingsHint && !showMenuButton {
 				settingsHint.transition(.opacity)
 			}
@@ -264,6 +288,8 @@ struct StreamView: View {
 	}
 
 	private func startSession() {
+		bitrateKey = LocalNetwork.currentKey()
+		if let learnedBitrate { log.notice("Auto bitrate: using \(learnedBitrate) Mbps learned for this network") }
 		let session = StreamSession(accounts: accounts, game: game, variant: variant, settings: settings)
 		if let orientation = interfaceOrientation {
 			session.input.interfaceOrientation = orientation
@@ -274,7 +300,15 @@ struct StreamView: View {
 	}
 
 	private func stop() {
-		session?.stop()
+		if let session {
+			session.stop()
+			// Learn from how it went, for the next game on this network
+			if settingsStore.settings.autoBitrate, gameSettings.settings(for: game.id) == nil, let bitrateKey {
+				for report in session.qualityReports {
+					bitrateMemory.record(report, for: bitrateKey, starting: settingsStore.settings.bitrateMbps)
+				}
+			}
+		}
 		session = nil
 		AppDelegate.setStreaming(false)
 	}
@@ -713,8 +747,99 @@ struct StreamView: View {
 			GamepadRow(id: "quit", confirmLabel: quitArmed ? "Confirm quit" : "Quit", activate: {
 				if quitArmed { quit() } else { quitArmed = true }
 			}),
-		] + sessionControlsRows
+		] + connectionRows + sessionControlsRows
 			+ StreamSettingsForm.gamepadRows(menuSettings, showsVideo: false) { menuNavigation.open($0) }
+	}
+
+	// MARK: - Check connection
+
+	private func connectionCheckProgress(_ check: ConnectionCheck, session: StreamSession) -> some View {
+		HStack(spacing: 10) {
+			ProgressView(value: check.progress)
+				.progressViewStyle(.circular)
+				.tint(.white)
+			VStack(alignment: .leading, spacing: 2) {
+				Text("Checking the connection… \(check.secondsLeft) s").font(.subheadline.weight(.semibold))
+				Text("Keep playing, ideally something busy").font(.caption).foregroundStyle(.white.opacity(0.7))
+			}
+			Button("Cancel") { session.dismissConnectionCheck() }
+				.font(.subheadline.weight(.semibold))
+				.buttonStyle(.bordered)
+				.tint(.white)
+		}
+		.foregroundStyle(.white)
+		.padding(.horizontal, 14)
+		.padding(.vertical, 8)
+		.background(.black.opacity(0.7), in: Capsule())
+		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+		.padding(.top, 16)
+	}
+
+	private func connectionCheckResult(_ result: ConnectionCheckResult, session: StreamSession) -> some View {
+		let (symbol, colour): (String, Color) = switch result.verdict {
+		case .good, .roomToGrow: ("checkmark.circle.fill", .green)
+		case .minorHiccups: ("exclamationmark.circle.fill", .yellow)
+		case .tooHigh: ("exclamationmark.triangle.fill", .orange)
+		case .inconclusive: ("questionmark.circle.fill", .secondary)
+		}
+		return VStack(alignment: .leading, spacing: 10) {
+			Label {
+				Text(result.title).font(.headline)
+			} icon: {
+				Image(systemName: symbol).foregroundStyle(colour)
+			}
+			Text(result.detail)
+				.font(.subheadline)
+				.fixedSize(horizontal: false, vertical: true)
+			HStack {
+				if let rate = result.bitrateMbps {
+					Button("Use \(rate) Mbps next time") {
+						useBitrateNextTime(rate)
+						session.dismissConnectionCheck()
+					}
+					.buttonStyle(.borderedProminent)
+					Button("Keep current") { session.dismissConnectionCheck() }
+						.buttonStyle(.bordered)
+				} else {
+					Button("OK") { session.dismissConnectionCheck() }
+						.buttonStyle(.borderedProminent)
+				}
+				Spacer()
+				Button("Check again") { session.startConnectionCheck() }
+					.buttonStyle(.bordered)
+			}
+			if result.bitrateMbps != nil {
+				Text("GeForce NOW sets the bitrate when a game starts, so this applies from your next game.")
+					.font(.caption).foregroundStyle(.secondary)
+			}
+		}
+		.padding(16)
+		.frame(maxWidth: 460)
+		.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+	}
+
+	/// A game with its own video settings keeps its bitrate there. Otherwise, with Auto
+	/// bitrate on Wi-Fi it's remembered for this network, and without it it's the Bitrate setting.
+	private func useBitrateNextTime(_ rate: Int) {
+		if var custom = gameSettings.settings(for: game.id) {
+			custom.bitrateMbps = rate
+			gameSettings.set(custom, for: game.id)
+		} else if settingsStore.settings.autoBitrate, let bitrateKey {
+			bitrateMemory.setManual(rate, for: bitrateKey)
+		} else {
+			settingsStore.settings.bitrateMbps = rate
+		}
+	}
+
+	private var connectionRows: [GamepadRow] {
+		[GamepadRow(id: "connection", confirmLabel: session?.connectionCheck != nil ? "Stop" : "Check", activate: {
+			if session?.connectionCheck != nil {
+				session?.dismissConnectionCheck()
+			} else {
+				session?.startConnectionCheck()
+				showMenu = false
+			}
+		})]
 	}
 
 	/// Shown while this stream's virtual controls differ from the saved setting
@@ -779,6 +904,25 @@ struct StreamView: View {
 				if let session {
 					VideoSettingsSummary(settings: session.streamSettings, stats: session.stats,
 						customGameName: gameSettings.settings(for: game.id) != nil ? game.title : nil)
+				}
+				Section {
+					if session?.connectionCheck != nil {
+						Button("Stop the connection check", role: .destructive) { session?.dismissConnectionCheck() }
+							.gamepadRow("connection")
+					} else {
+						Button {
+							session?.startConnectionCheck()
+							showMenu = false
+						} label: {
+							Label("Check connection", systemImage: "wifi")
+						}
+						.disabled(session?.state != .streaming)
+						.gamepadRow("connection")
+					}
+				} header: {
+					Text("Connection")
+				} footer: {
+					Text("Watches the next \(ConnectionCheck.duration) seconds of the stream for lost video, then suggests a bitrate for your next game. Play something with plenty of movement while it checks, since GeForce NOW sends much less on menus and quiet scenes.")
 				}
 				if let sessionControlsOverride {
 					Section {
