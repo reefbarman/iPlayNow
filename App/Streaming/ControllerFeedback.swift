@@ -262,8 +262,10 @@ private final class Motor {
 	func set(intensity: Float, sharpness: Float) {
 		let intensity = min(1, max(0, intensity))
 		let sharpness = min(1, max(0, sharpness))
-		// Each change is a packet to the controller: skip ones you couldn't feel
-		guard abs(intensity - self.intensity) > 0.01 || abs(sharpness - self.sharpness) > 0.03 else { return }
+		// Each change is a packet to the controller: skip ones you couldn't feel,
+		// but always stop, or a small leftover level keeps the motor running
+		let stopping = intensity == 0 && self.intensity > 0
+		guard stopping || abs(intensity - self.intensity) > 0.01 || abs(sharpness - self.sharpness) > 0.03 else { return }
 		self.intensity = intensity
 		self.sharpness = sharpness
 		guard ensureRunning() else { return }
