@@ -38,6 +38,8 @@ struct StreamView: View {
 	@State private var menuNavigation = SettingsNavigation()
 	/// A controller quits with a second press of A
 	@State private var quitArmed = false
+	@State private var isPreparingDiagnostics = false
+	@Environment(\.openURL) private var openURL
 	/// The iPhone keyboard is up, typing into the game
 	@State private var showKeyboard = false
 	/// Screenshot from the menu: saving now, or just saved
@@ -749,6 +751,7 @@ struct StreamView: View {
 			}),
 		] + connectionRows + sessionControlsRows
 			+ StreamSettingsForm.gamepadRows(menuSettings, showsVideo: false) { menuNavigation.open($0) }
+			+ HelpSection.gamepadRows(isPreparing: $isPreparingDiagnostics, openURL: openURL)
 	}
 
 	// MARK: - Check connection
@@ -932,6 +935,7 @@ struct StreamView: View {
 					}
 				}
 				StreamSettingsForm(settings: menuSettings, showsVideo: false)
+				HelpSection(isPreparing: $isPreparingDiagnostics)
 			}
 			.navigationTitle(game.title)
 			.navigationBarTitleDisplayMode(.inline)

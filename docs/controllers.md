@@ -18,6 +18,7 @@ Settings › Controller › Vibration.
 
 - **Rumble:** turns all vibration on or off. Games rumble the controller, or the phone when the controller has no motors.
 - **Controller vibration:** how strongly a controller's motors play rumble: Light, Medium or Full (the default).
+- **Rumble updates:** how many vibration changes per second go to a wireless controller, from 10 to Unlimited (default 25). They share the controller's Bluetooth connection with your button presses, so too many can make the controls stop responding for a moment during heavy vibration. Lower it if that happens, raise it if vibration feels less detailed.
 - **Phone haptics:** how strongly the phone itself vibrates, which it does with virtual controls or a controller without motors.
 
 ## Gyro aiming

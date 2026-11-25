@@ -22,6 +22,7 @@ The game keeps running behind the menu. From it you can:
 - Open the [Controller Test](controllers.md#controller-test).
 - See the phone's battery and temperature.
 - Type with the keyboard, mute the mic and save a screenshot.
+- [Share diagnostics](troubleshooting.md#reporting-a-problem) or report a problem, without leaving the game.
 - **Quit game**, which ends the session on GeForce NOW so it doesn't keep running on your account. It needs a second press to confirm.
 
 ## Typing with the keyboard

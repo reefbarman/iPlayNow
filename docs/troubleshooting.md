@@ -2,9 +2,13 @@
 
 ## Reporting a problem
 
-Right after the problem happens, without closing the app, open **Settings › Share diagnostics** and attach the file to a [GitHub issue](https://github.com/reefbarman/iPlayNow/issues/new). **Report a problem on GitHub** in the same section opens a new issue.
+Right after the problem happens, without closing the app, open **Settings › Share diagnostics** and attach the file to a [GitHub issue](https://github.com/reefbarman/iPlayNow/issues/new). It's also at the bottom of the stream menu, so you can share it mid-game. **Report a problem on GitHub** in the same section opens a new issue.
 
 The report is plain text, so you can check it before sending. It has the app version, your phone model, screen details, settings and the app's logs since it was opened. IP addresses, IDs, sign-in tokens and your account's name and email are removed.
+
+## The controller stops responding during heavy rumble
+
+A wireless controller's vibration and your button presses share one Bluetooth connection. If the controls freeze for a moment while the controller rumbles hard, lower **Settings › Controller › Vibration › Rumble updates**. Diagnostics note when the controller went quiet, which helps if you report it.
 
 ## The library is empty or missing games
 

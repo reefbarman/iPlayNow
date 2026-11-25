@@ -282,6 +282,7 @@ private struct ControllerSettingsPage: View {
 		]
 		if settings.rumble {
 			rows.append(.picker("vibration", $settings.controllerVibration, ControllerVibration.allCases))
+			rows.append(.slider("rumbleRate", $settings.controllerRumbleRate, 10...100, step: 5))
 			if Self.deviceHasHaptics {
 				rows.append(.picker("haptics", $settings.phoneHaptics, PhoneHaptics.allCases))
 			}
@@ -314,6 +315,10 @@ private struct ControllerSettingsPage: View {
 				}
 				.disabled(!settings.rumble)
 				.gamepadRow("vibration")
+				LabeledSlider(title: "Rumble updates", value: $settings.controllerRumbleRate, range: 10...100, step: 5,
+					valueText: settings.controllerRumbleRate >= 100 ? "Unlimited" : "\(Int(settings.controllerRumbleRate)) per second")
+					.disabled(!settings.rumble)
+					.gamepadRow("rumbleRate")
 				// iPads have no vibration motor
 				if Self.deviceHasHaptics {
 					Picker("Phone haptics", selection: $settings.phoneHaptics) {
@@ -330,6 +335,7 @@ private struct ControllerSettingsPage: View {
 				} else {
 					Text("Rumble turns controller vibration on or off. Controller vibration sets how strongly the controller's motors play it.")
 				}
+				Text("Rumble updates limits how often vibration changes are sent to a wireless controller. They share its Bluetooth connection with your button presses, so too many can make the controls stop responding for a moment during heavy vibration. Lower it if that happens, raise it if vibration feels less detailed.")
 			}
 
 			Section {
@@ -695,8 +701,6 @@ struct SettingsView: View {
 	@State private var signOutArmed = false
 	@State private var navigation = SettingsNavigation()
 	@State private var isPreparingDiagnostics = false
-	@State private var diagnosticsShare: DiagnosticsShare?
-	@State private var showDiagnosticsError = false
 	@Environment(\.openURL) private var openURL
 
 	private func signOut() {
@@ -712,31 +716,12 @@ struct SettingsView: View {
 				if signOutArmed { signOut() } else { signOutArmed = true }
 			}))
 		}
-		return rows + StreamSettingsForm.gamepadRows(settingsBinding) { navigation.open($0) } + [
-			GamepadRow(id: "help.diagnostics", confirmLabel: "Share", activate: { isPreparingDiagnostics = true }),
-			GamepadRow(id: "help.report", confirmLabel: "Open", activate: { openURL(AppInfo.newIssue) }),
+		return rows + StreamSettingsForm.gamepadRows(settingsBinding) { navigation.open($0) }
+			+ HelpSection.gamepadRows(isPreparing: $isPreparingDiagnostics, openURL: openURL) + [
 			GamepadRow(id: "about.source", confirmLabel: "Open", activate: { openURL(AppInfo.sourceURL) }),
 			GamepadRow.link(SettingsPage.licences.rowID) { navigation.open(.licences) },
 			GamepadRow(id: "about.privacy", confirmLabel: "Open", activate: { openURL(AppInfo.privacyPolicy) }),
 		]
-	}
-
-	private func prepareDiagnostics() async {
-		let account = accounts.account
-		let report = DiagnosticsReport(
-			settings: store.settings,
-			membership: account?.tierName,
-			provider: account?.provider.displayName,
-			privateText: [account?.displayName, account?.email].compactMap { $0 })
-		do {
-			let url = try await report.writeFile()
-			guard !Task.isCancelled else { return }
-			diagnosticsShare = DiagnosticsShare(url: url)
-		} catch {
-			guard !Task.isCancelled else { return }
-			showDiagnosticsError = true
-		}
-		isPreparingDiagnostics = false
 	}
 
 	private var settingsBinding: Binding<StreamSettings> {
@@ -766,27 +751,7 @@ struct SettingsView: View {
 
 				StreamSettingsForm(settings: settingsBinding)
 
-				Section {
-					Button {
-						isPreparingDiagnostics = true
-					} label: {
-						if isPreparingDiagnostics {
-							ProgressView("Preparing diagnostics…")
-						} else {
-							Label("Share diagnostics", systemImage: "ladybug")
-						}
-					}
-					.disabled(isPreparingDiagnostics || diagnosticsShare != nil)
-					.gamepadRow("help.diagnostics")
-					Link(destination: AppInfo.newIssue) {
-						Label("Report a problem on GitHub", systemImage: "exclamationmark.bubble")
-					}
-					.gamepadRow("help.report")
-				} header: {
-					Text("Help")
-				} footer: {
-					Text("The report has your phone model, screen details, settings and the app's logs since it was opened. IP addresses, IDs, sign-in tokens and your account's name and email are removed. Share it before closing the app, so the logs still cover the problem.")
-				}
+				HelpSection(isPreparing: $isPreparingDiagnostics)
 
 				AboutSection()
 			}
@@ -806,29 +771,109 @@ struct SettingsView: View {
 			.confirmationDialog("Sign out of GeForce NOW?", isPresented: $confirmSignOut, titleVisibility: .visible) {
 				Button("Sign out", role: .destructive, action: signOut)
 			}
-			.task(id: isPreparingDiagnostics) {
-				guard isPreparingDiagnostics else { return }
-				await prepareDiagnostics()
-			}
-			.sheet(item: $diagnosticsShare) { share in
-				share
-			}
-			.alert("Couldn't prepare diagnostics", isPresented: $showDiagnosticsError) {
-				Button("OK", role: .cancel) {}
-			} message: {
-				Text("Try sharing diagnostics again.")
-			}
 		}
 	}
 }
 
-private struct DiagnosticsShare: UIViewControllerRepresentable, Identifiable {
-	let url: URL
-	var id: URL { url }
+/// Share diagnostics and report a problem, in Settings and the stream menu.
+/// `isPreparing` is a binding so the form's controller rows can start it too.
+struct HelpSection: View {
+	@Binding var isPreparing: Bool
+	@Environment(SettingsStore.self) private var store
+	@Environment(GFNAccountStore.self) private var accounts
+	@State private var showError = false
+	@State private var anchor = PresentationAnchor.Box()
 
-	func makeUIViewController(context: Context) -> UIActivityViewController {
-		UIActivityViewController(activityItems: [url], applicationActivities: nil)
+	/// The controller rows for this section, for the form's `gamepadForm`
+	static func gamepadRows(isPreparing: Binding<Bool>, openURL: OpenURLAction) -> [GamepadRow] {
+		[
+			GamepadRow(id: "help.diagnostics", confirmLabel: "Share", activate: { isPreparing.wrappedValue = true }),
+			GamepadRow(id: "help.report", confirmLabel: "Open", activate: { openURL(AppInfo.newIssue) }),
+		]
 	}
 
-	func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+	var body: some View {
+		Section {
+			Button {
+				isPreparing = true
+			} label: {
+				if isPreparing {
+					ProgressView("Preparing diagnostics…")
+				} else {
+					Label("Share diagnostics", systemImage: "ladybug")
+				}
+			}
+			.disabled(isPreparing)
+			.background(PresentationAnchor(box: anchor))
+			.gamepadRow("help.diagnostics")
+			Link(destination: AppInfo.newIssue) {
+				Label("Report a problem on GitHub", systemImage: "exclamationmark.bubble")
+			}
+			.gamepadRow("help.report")
+		} header: {
+			Text("Help")
+		} footer: {
+			Text("The report has your phone model, screen details, settings and the app's logs since it was opened. IP addresses, IDs, sign-in tokens and your account's name and email are removed. Share it before closing the app, so the logs still cover the problem.")
+		}
+		.task(id: isPreparing) {
+			guard isPreparing else { return }
+			await prepareDiagnostics()
+		}
+		.alert("Couldn't prepare diagnostics", isPresented: $showError) {
+			Button("OK", role: .cancel) {}
+		} message: {
+			Text("Try sharing diagnostics again.")
+		}
+	}
+
+	private func prepareDiagnostics() async {
+		let account = accounts.account
+		let report = DiagnosticsReport(
+			settings: store.settings,
+			membership: account?.tierName,
+			provider: account?.provider.displayName,
+			privateText: [account?.displayName, account?.email].compactMap { $0 })
+		do {
+			let url = try await report.writeFile()
+			guard !Task.isCancelled else { return }
+			if !presentShareSheet(url) { showError = true }
+		} catch {
+			guard !Task.isCancelled else { return }
+			showError = true
+		}
+		isPreparing = false
+	}
+
+	/// Presented with UIKit rather than `.sheet`: a sheet attached to a Form row closes
+	/// again as soon as the row redraws (the button's label changes back right after)
+	private func presentShareSheet(_ url: URL) -> Bool {
+		guard let view = anchor.view, var top = view.window?.rootViewController else { return false }
+		while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
+		let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+		controller.popoverPresentationController?.sourceView = view
+		controller.popoverPresentationController?.sourceRect = view.bounds
+		top.present(controller, animated: true)
+		return true
+	}
+}
+
+/// A plain UIKit view behind a SwiftUI control, to present UIKit sheets from the
+/// control's own window (the Duo can show two) and anchor popovers on iPad
+private struct PresentationAnchor: UIViewRepresentable {
+	final class Box {
+		weak var view: UIView?
+	}
+
+	let box: Box
+
+	func makeUIView(context: Context) -> UIView {
+		let view = UIView()
+		view.isUserInteractionEnabled = false
+		box.view = view
+		return view
+	}
+
+	func updateUIView(_ view: UIView, context: Context) {
+		box.view = view
+	}
 }
