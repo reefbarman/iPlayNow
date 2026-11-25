@@ -2,6 +2,14 @@
 
 Every iPlayNow release, written for players. The same notes are on each [GitHub release](https://github.com/reefbarman/iPlayNow/releases).
 
+## v0.4.0 (2026-11-25)
+
+### New
+- **Controller vibration:** choose how strongly your controller rumbles: Light, Medium or Full. It's in Settings › Controller › Vibration, next to Phone haptics, and the Controller Test uses it too. Full is the default, so rumble feels the same as before unless you change it.
+
+### Fixes
+- Rumble could keep buzzing faintly after a game stopped it. The controller's motors now always stop when the rumble ends.
+
 ## v0.3.0 (2026-11-25)
 
 A big catch-up with iPlay5. You can now use touch as a mouse, type with the iPhone keyboard and talk in party chat. The app reconnects to your game after a dropout and learns the right bitrate for each Wi-Fi network. Settings work with a controller, and there's a 3D Controller Test, screenshots and a new guide site at [reefbarman.github.io/iPlayNow](https://reefbarman.github.io/iPlayNow/).
