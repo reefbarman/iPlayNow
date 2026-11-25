@@ -2,6 +2,16 @@
 
 Every iPlayNow release, written for players. The same notes are on each [GitHub release](https://github.com/reefbarman/iPlayNow/releases).
 
+## v0.4.1 (2026-11-25)
+
+### New
+- **Rumble updates:** a new slider in Settings › Controller › Vibration sets how many vibration changes per second go to a wireless controller, from 10 to Unlimited (default 25). Lower it if the controls freeze during heavy rumble, raise it if vibration feels less detailed.
+- **Share diagnostics in the stream menu:** share a report mid-game, right after something goes wrong, from the Help section at the bottom of the stream menu.
+
+### Fixes
+- Heavy rumble could make a wireless controller stop responding for a moment while the game carried on. Rumble now sends fewer, smaller updates, so your button presses get through.
+- The Share diagnostics share sheet could close as soon as it opened. It now stays open.
+
 ## v0.4.0 (2026-11-25)
 
 ### New
