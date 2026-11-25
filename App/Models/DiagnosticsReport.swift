@@ -1,5 +1,4 @@
 import GameController
-import OSLog
 import UIKit
 
 /// A plain-text report people can attach to a GitHub issue: app, phone and screen details,
@@ -15,7 +14,7 @@ struct DiagnosticsReport {
 
 	func writeFile() async throws -> URL {
 		let summary = await MainActor.run { Self.summary(settings: settings, membership: membership, provider: provider) }
-		let logs = (try? Self.logLines()) ?? ["(couldn't read the app's logs)"]
+		let logs = Self.logLines()
 		let text = redact(summary + "\n\n== Log since the app was opened ==\n" + logs.joined(separator: "\n") + "\n")
 
 		let stamp = Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false).timeSeparator(.omitted))
@@ -49,13 +48,12 @@ struct DiagnosticsReport {
 		"""
 	}
 
-	private static func logLines() throws -> [String] {
-		let store = try OSLogStore(scope: .currentProcessIdentifier)
-		let entries = try store.getEntries(matching: NSPredicate(format: "subsystem == %@", logSubsystem))
-		let lines = entries.compactMap { $0 as? OSLogEntryLog }.map { entry in
-			"\(entry.date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().second().secondFraction(.fractional(3)))) [\(entry.category)] \(level(entry.level)) \(entry.composedMessage)"
+	/// From the app's own copy of its log (AppLog): the system log can't be read back in
+	/// App Store and TestFlight builds
+	private static func logLines() -> [String] {
+		AppLogBuffer.shared.snapshot().map { line in
+			"\(line.date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().second().secondFraction(.fractional(3)))) [\(line.category)] \(line.level.rawValue) \(line.text)"
 		}
-		return Array(lines.suffix(5000))
 	}
 
 	// MARK: - Redaction
@@ -101,17 +99,6 @@ struct DiagnosticsReport {
 		case .landscapeLeft: "landscape left"
 		case .landscapeRight: "landscape right"
 		default: "unknown"
-		}
-	}
-
-	private static func level(_ level: OSLogEntryLog.Level) -> String {
-		switch level {
-		case .debug: "debug"
-		case .info: "info"
-		case .notice: "notice"
-		case .error: "ERROR"
-		case .fault: "FAULT"
-		default: "-"
 		}
 	}
 }

@@ -2,7 +2,7 @@ import SwiftUI
 import os
 
 let logSubsystem = Bundle.main.bundleIdentifier ?? "iplaynow"
-let log = Logger(subsystem: logSubsystem, category: "app")
+let log = AppLog(subsystem: logSubsystem, category: "app")
 
 @main
 struct iPlayNowApp: App {
