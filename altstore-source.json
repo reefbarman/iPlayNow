@@ -19,6 +19,14 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.4.0",
+          "date": "2026-11-25T07:08:22Z",
+          "downloadURL": "https://github.com/reefbarman/iPlayNow/releases/download/v0.4.0/iPlayNow.ipa",
+          "size": 11840055,
+          "minOSVersion": "17.0",
+          "localizedDescription": "See the release notes on GitHub."
+        },
+        {
           "version": "0.3.0",
           "date": "2026-11-24T22:28:02Z",
           "downloadURL": "https://github.com/reefbarman/iPlayNow/releases/download/v0.3.0/iPlayNow.ipa",
