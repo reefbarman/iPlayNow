@@ -216,6 +216,7 @@ final class StreamSession {
 		input.gyroAimEnabled = settings.gyroAim != .off
 		input.feedback.rumbleEnabled = settings.rumble
 		input.feedback.phoneHapticsScale = settings.phoneHaptics.scale
+		input.feedback.controllerVibrationScale = settings.controllerVibration.scale
 		input.onPad = { [weak self] pad in
 			self?.physicalPad = pad
 			self?.sendPad()
@@ -361,6 +362,7 @@ final class StreamSession {
 		}
 		input.feedback.rumbleEnabled = new.rumble
 		input.feedback.phoneHapticsScale = new.phoneHaptics.scale
+		input.feedback.controllerVibrationScale = new.controllerVibration.scale
 		renderer?.setDisplayMode(new.displayMode)
 		configureRenderer()
 	}

@@ -280,8 +280,11 @@ private struct ControllerSettingsPage: View {
 			.link("test") { testing = true },
 			.toggle("rumble", $settings.rumble),
 		]
-		if Self.deviceHasHaptics && settings.rumble {
-			rows.append(.picker("haptics", $settings.phoneHaptics, PhoneHaptics.allCases))
+		if settings.rumble {
+			rows.append(.picker("vibration", $settings.controllerVibration, ControllerVibration.allCases))
+			if Self.deviceHasHaptics {
+				rows.append(.picker("haptics", $settings.phoneHaptics, PhoneHaptics.allCases))
+			}
 		}
 		rows.append(.link(SettingsPage.gyroAim.rowID) { navigation.open(.gyroAim) })
 		if HomeButtonSetting.isSupported {
@@ -306,6 +309,11 @@ private struct ControllerSettingsPage: View {
 			Section {
 				Toggle("Rumble", isOn: $settings.rumble)
 					.gamepadRow("rumble")
+				Picker("Controller vibration", selection: $settings.controllerVibration) {
+					ForEach(ControllerVibration.allCases) { Text($0.label).tag($0) }
+				}
+				.disabled(!settings.rumble)
+				.gamepadRow("vibration")
 				// iPads have no vibration motor
 				if Self.deviceHasHaptics {
 					Picker("Phone haptics", selection: $settings.phoneHaptics) {
@@ -318,9 +326,9 @@ private struct ControllerSettingsPage: View {
 				Text("Vibration")
 			} footer: {
 				if Self.deviceHasHaptics {
-					Text("Rumble turns all vibration on or off. Phone haptics sets how strongly the phone itself vibrates, which it does with virtual controls or a controller that has no motors (like a Backbone).")
+					Text("Rumble turns all vibration on or off. Controller vibration sets how strongly a controller's motors play it. Phone haptics sets how strongly the phone itself vibrates, which it does with virtual controls or a controller that has no motors (like a Backbone).")
 				} else {
-					Text("Rumble turns controller vibration on or off.")
+					Text("Rumble turns controller vibration on or off. Controller vibration sets how strongly the controller's motors play it.")
 				}
 			}
 

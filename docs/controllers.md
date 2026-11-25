@@ -17,6 +17,7 @@ On iOS 27, iOS opens its Game Overlay when you press a controller's Home button,
 Settings › Controller › Vibration.
 
 - **Rumble:** turns all vibration on or off. Games rumble the controller, or the phone when the controller has no motors.
+- **Controller vibration:** how strongly a controller's motors play rumble: Light, Medium or Full (the default).
 - **Phone haptics:** how strongly the phone itself vibrates, which it does with virtual controls or a controller without motors.
 
 ## Gyro aiming

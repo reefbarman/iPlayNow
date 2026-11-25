@@ -122,6 +122,7 @@ final class ControllerTester {
 		gyroAimSetting = settings.gyroAim != .off
 		input.feedback.rumbleEnabled = settings.rumble
 		input.feedback.phoneHapticsScale = settings.phoneHaptics.scale
+		input.feedback.controllerVibrationScale = settings.controllerVibration.scale
 		if let orientation { input.interfaceOrientation = orientation }
 		input.onPad = { [weak self] pad in
 			guard let self else { return }

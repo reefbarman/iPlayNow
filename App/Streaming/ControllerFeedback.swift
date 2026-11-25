@@ -24,6 +24,14 @@ final class ControllerFeedback {
 		}
 	}
 
+	/// The Controller vibration setting: how strongly a controller's motors play rumble, 0...1
+	var controllerVibrationScale: Float = 1 {
+		didSet {
+			let scale = controllerVibrationScale
+			queue.async { self.controllerScale = scale }
+		}
+	}
+
 	private let queue = DispatchQueue(label: "iPlayNow.controller-feedback", qos: .userInteractive)
 
 	// Main thread
@@ -37,6 +45,7 @@ final class ControllerFeedback {
 	private var rumbleOut: [(Float, Float)] = [(0, 0.5), (0, 0.5)]
 	private var motorsEnabled = true
 	private var phoneScale: Float = 1
+	private var controllerScale: Float = 1
 
 	// MARK: - Controller
 
@@ -94,12 +103,12 @@ final class ControllerFeedback {
 		if phone != nil {
 			flushPhone()
 		} else if handles.count == 2 {
-			handles[0].set(intensity: l, sharpness: sharpness.0)
-			handles[1].set(intensity: r, sharpness: sharpness.1)
+			handles[0].set(intensity: l * controllerScale, sharpness: sharpness.0)
+			handles[1].set(intensity: r * controllerScale, sharpness: sharpness.1)
 		} else {
 			let total = l + r
 			let blended = total > 0 ? (sharpness.0 * l + sharpness.1 * r) / total : 0.5
-			handles[0].set(intensity: max(l, r), sharpness: blended)
+			handles[0].set(intensity: max(l, r) * controllerScale, sharpness: blended)
 		}
 	}
 
