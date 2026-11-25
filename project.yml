@@ -76,9 +76,9 @@ targets:
         # Game controllers can drive the UI and Game Mode kicks in while streaming
         GCSupportsControllerUserInteraction: true
         GCSupportsGameMode: true
+        # DualSense is an ExtendedGamepad. App Store Connect rejects any other profile name here
         GCSupportedGameControllers:
           - ProfileName: ExtendedGamepad
-          - ProfileName: DualSense
         CFBundleURLTypes:
           - CFBundleURLName: dev.reefbarman.iplaynow.signin
             CFBundleURLSchemes:

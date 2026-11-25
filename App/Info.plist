@@ -39,10 +39,6 @@
 			<key>ProfileName</key>
 			<string>ExtendedGamepad</string>
 		</dict>
-		<dict>
-			<key>ProfileName</key>
-			<string>DualSense</string>
-		</dict>
 	</array>
 	<key>GCSupportsControllerUserInteraction</key>
 	<true/>
